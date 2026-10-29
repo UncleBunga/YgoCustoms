@@ -74,25 +74,26 @@ namespace WindBot.Game.AI.Decks
             AddExecutor(ExecutorType.Activate, CardId.LovingDefender, () => true);
             AddExecutor(ExecutorType.Activate, CardId.MatureChronicle, MatureChronicleEffect);
 
-            // Sacred Beasts
+            // Sacred Beasts (their protection goes up first)
+            AddExecutor(ExecutorType.Activate, CardId.MoundOfTheBoundCreator, () => Card.Location != CardLocation.SpellZone || Card.IsFacedown() || Card.Location == CardLocation.Grave);
+            AddExecutor(ExecutorType.Activate, CardId.FallenParadise, () => true);
             AddExecutor(ExecutorType.Activate, CardId.OpeningOfTheSpiritGates, SpiritGatesEffect);
             AddExecutor(ExecutorType.Summon, CardId.DarkBeckoningBeast, () => true);
             AddExecutor(ExecutorType.Activate, CardId.DarkBeckoningBeast, BeckoningSearch);
-            AddExecutor(ExecutorType.Summon, CardId.DarkSummoningBeast, () => true);
-            AddExecutor(ExecutorType.Summon, CardId.ChaosSummoningBeast, () => Bot.Hand.Any(c => c.IsCode(Beasts)));
-            AddExecutor(ExecutorType.Summon, CardId.PhantasmalSummoningBeast, () => true);
+            AddExecutor(ExecutorType.Summon, CardId.DarkSummoningBeast, () => !TerrorWipesOurBoard);
+            AddExecutor(ExecutorType.Summon, CardId.ChaosSummoningBeast, () => !TerrorWipesOurBoard && Bot.Hand.Any(c => c.IsCode(Beasts)));
+            AddExecutor(ExecutorType.Summon, CardId.PhantasmalSummoningBeast, () => !TerrorWipesOurBoard);
             AddExecutor(ExecutorType.Activate, CardId.DarkSummoningBeast, () => SummonBeast(true));
             AddExecutor(ExecutorType.Activate, CardId.ChaosSummoningBeast, () => SummonBeast(false));
             AddExecutor(ExecutorType.Activate, CardId.PhantasmalSummoningBeast, () => SummonBeast(true));
             AddExecutor(ExecutorType.Activate, CardId.OneForOne, OneForOneEffect);
             AddExecutor(ExecutorType.Activate, CardId.HyperBlaze, HyperBlazeEffect);
-            AddExecutor(ExecutorType.Activate, CardId.FallenParadise, () => true);
             AddExecutor(ExecutorType.Activate, CardId.Raviel, RavielEffect);
             AddExecutor(ExecutorType.Activate, CardId.Uria, () => TargetEnemySetCard());
-            AddExecutor(ExecutorType.SpSummon, CardId.Armityle, ArmityleSummon);
-            AddExecutor(ExecutorType.SpSummon, CardId.Trilojig, () => MyTurn && Enemy.GetMonsters().Any(m => m.IsFaceup()));
+            AddExecutor(ExecutorType.SpSummon, CardId.Armityle, () => !TerrorWipesOurBoard && ArmityleSummon());
+            AddExecutor(ExecutorType.SpSummon, CardId.Trilojig, () => MyTurn && !TerrorWipesOurBoard && Enemy.GetMonsters().Any(m => m.IsFaceup()));
             AddExecutor(ExecutorType.Activate, CardId.Trilojig, () => TargetEnemyMonster());
-            AddExecutor(ExecutorType.Activate, CardId.DimensionFusionDestruction, () => MyTurn && Bot.HasInExtra(CardId.Armityle));
+            AddExecutor(ExecutorType.Activate, CardId.DimensionFusionDestruction, () => MyTurn && !TerrorWipesOurBoard && Bot.HasInExtra(CardId.Armityle));
 
             // Normal Summon Yubel only when nothing better uses the summon
             AddExecutor(ExecutorType.Summon, CardId.Yubel, () => Bot.GetMonsterCount() == 0);
@@ -118,6 +119,17 @@ namespace WindBot.Game.AI.Decks
         bool destroyYubelFromDeck;
 
         bool YubelOnField => Bot.GetMonsters().Any(m => m.IsFaceup() && m.IsCode(Yubels));
+        bool LordsOnField => Bot.GetMonsters().Any(m => m.IsCode(Beasts));
+
+        // Terror Incarnate destroys every other monster in our End Phase: no Lords next to it on our turn, and no Terror
+        // while Lords are out
+        // (Mound of the Bound Creator keeps Level 10+ monsters from being destroyed by card effects, so the Lords survive it)
+        bool TerrorWipesOurBoard => MyTurn && Bot.GetMonsters().Any(m => m.IsFaceup() && m.IsCode(CardId.TerrorIncarnate))
+            && !Bot.HasInSpellZone(CardId.MoundOfTheBoundCreator, true);
+
+        // Lords wait for their protection: Mound of the Bound Creator / Fallen Paradise in hand get activated first
+        bool ProtectionPending => Bot.HasInHand(CardId.MoundOfTheBoundCreator) && !Bot.HasInSpellZone(CardId.MoundOfTheBoundCreator, true)
+            || Bot.HasInHand(CardId.FallenParadise) && !Bot.HasInSpellZone(CardId.FallenParadise, true);
         bool TerrorReady => MaybeInDeck(CardId.TerrorIncarnate, 1) || Bot.Graveyard.Any(c => c.IsCode(CardId.TerrorIncarnate)) || Bot.HasInHand(CardId.TerrorIncarnate);
 
         // ---------- Yubel loop ----------
@@ -127,7 +139,8 @@ namespace WindBot.Game.AI.Decks
             if (Card.Location == CardLocation.Hand || (Card.Location == CardLocation.SpellZone && Card.IsFacedown()))
             {
                 // activation: destroy Yubel in the Deck so it brings Terror Incarnate, else add a 0/0 Fiend
-                destroyYubelFromDeck = !YubelOnField && TerrorReady && MaybeInDeck(CardId.Yubel, 2) && !Bot.HasInMonstersZone(CardId.TerrorIncarnate);
+                destroyYubelFromDeck = !YubelOnField && TerrorReady && MaybeInDeck(CardId.Yubel, 2) && !Bot.HasInMonstersZone(CardId.TerrorIncarnate)
+                    && !LordsOnField;
                 if (destroyYubelFromDeck) Pick(CardId.Yubel);
                 else Pick(CardId.DarkSummoningBeast, CardId.SamsaraDLotus, CardId.Yubel, CardId.DarkBeckoningBeast);
                 return true;
@@ -141,10 +154,14 @@ namespace WindBot.Game.AI.Decks
         {
             if (Card.Location == CardLocation.Hand) return true;
             if (!MyTurn) return false;
-            // destroy Yubel (hand first) so Terror Incarnate arrives; Terror on the field becomes The Ultimate Nightmare
-            var t = Bot.Hand.FirstOrDefault(c => c.IsCode(CardId.Yubel))
+            // Terror Incarnate on the field becomes The Ultimate Nightmare (which doesn't wipe our board) first; otherwise
+            // destroy Yubel (hand first) so Terror Incarnate arrives
+            var t = Bot.GetMonsters().FirstOrDefault(m => m.IsFaceup() && m.IsCode(CardId.TerrorIncarnate) && MaybeInDeck(CardId.UltimateNightmare, 1)
+                    && Bot.Hand.Any(c => c.IsCode(Beasts)))
+                ?? Bot.Hand.FirstOrDefault(c => c.IsCode(CardId.Yubel))
                 ?? Bot.GetMonsters().FirstOrDefault(m => m.IsFaceup() && m.IsCode(CardId.Yubel))
                 ?? Bot.GetMonsters().FirstOrDefault(m => m.IsFaceup() && m.IsCode(CardId.TerrorIncarnate) && MaybeInDeck(CardId.UltimateNightmare, 1));
+            if (t != null && LordsOnField && !t.IsCode(CardId.TerrorIncarnate)) t = null; // Terror would wipe our Lords
             if (t != null && (t.IsCode(CardId.TerrorIncarnate) || TerrorReady))
             {
                 Pick(t);
@@ -152,8 +169,11 @@ namespace WindBot.Game.AI.Decks
                 return true;
             }
             // otherwise only a spare DARK monster in hand, for the search
-            var spare = Bot.Hand.Where(c => c.IsMonster() && c.HasAttribute(CardAttribute.Dark) && !c.IsCode(Beasts) && !c.IsCode(Yubels))
-                .OrderBy(c => Rank(ExpendablePriority, c)).FirstOrDefault();
+            // a spare DARK monster in hand: junk first, then a Lord we can't summon (no Summoning Beast) or a duplicate
+            bool canSummonLord = Bot.Hand.Any(c => c.IsCode(CardId.DarkSummoningBeast, CardId.ChaosSummoningBeast, CardId.PhantasmalSummoningBeast, CardId.DarkBeckoningBeast));
+            var spare = Bot.Hand.Where(c => c.IsMonster() && c.HasAttribute(CardAttribute.Dark) && !c.IsCode(Yubels)
+                    && (!c.IsCode(Beasts) || !canSummonLord || Bot.Hand.Count(x => x.IsCode(c.Id)) >= 2))
+                .OrderBy(c => c.IsCode(Beasts) ? 1 : 0).ThenBy(c => Rank(ExpendablePriority, c)).FirstOrDefault();
             if (spare == null || Bot.HasInHand(CardId.Yubel)) return false;
             Pick(spare);
             Pick(CardId.Yubel, CardId.NightmareThrone, CardId.SamsaraDLotus);
@@ -233,6 +253,7 @@ namespace WindBot.Game.AI.Decks
         bool SummonBeast(bool fromDeck)
         {
             if (!MyTurn) return false;
+            if ((TerrorWipesOurBoard || ProtectionPending) && Card.Location != CardLocation.Grave) return false;
             if (Card.Location == CardLocation.Grave)
             {
                 Pick(CardId.FallenParadise, CardId.DimensionFusionDestruction, CardId.Raviel, CardId.Hamon, CardId.Uria);
@@ -254,7 +275,9 @@ namespace WindBot.Game.AI.Decks
                 Pick(CardId.DarkSummoningBeast, CardId.Raviel, CardId.Hamon, CardId.PhantasmalSummoningBeast);
                 return true;
             }
-            // discard to revive a 0/0 Fiend (a Summoning Beast or Yubel), or recover a Continuous Spell
+            // discard to revive a 0/0 Fiend (a Summoning Beast or Yubel), or recover a Continuous Spell; nothing next to
+            // Terror Incarnate on our turn (it would be wiped in the End Phase)
+            if (TerrorWipesOurBoard) return false;
             var discard = Bot.Hand.Where(c => !c.IsCode(CardId.Yubel)).OrderBy(c => Rank(ExpendablePriority, c)).ThenBy(CardValue).FirstOrDefault();
             if (discard == null) return false;
             if (!Bot.Graveyard.Any(c => c.IsCode(CardId.DarkSummoningBeast, CardId.ChaosSummoningBeast, CardId.Yubel, CardId.PhantasmalSummoningBeast))) return true;
@@ -318,6 +341,16 @@ namespace WindBot.Game.AI.Decks
 
         public override int OnSelectOption(IList<long> options)
         {
+            int tribute = options.IndexOf(Util.GetStringId(CardId.Yubel, 3));
+            int destroy = options.IndexOf(Util.GetStringId(CardId.Yubel, 4));
+            if (tribute >= 0 && destroy >= 0)
+            {
+                var junk = Bot.GetMonsters().Where(m => !m.IsCode(Beasts) && !m.IsCode(Yubels) && !m.IsCode(CardId.Armityle, CardId.LovingDefender, CardId.Trilojig))
+                    .OrderBy(m => Rank(ExpendablePriority, m)).ThenBy(CardValue).FirstOrDefault();
+                if (junk == null) return destroy;
+                Pick(junk);
+                return tribute;
+            }
             // Nightmare Throne: destroy Yubel in the Deck instead of adding it
             if (destroyYubelFromDeck)
             {
