@@ -5,6 +5,10 @@ using YGOSharp.OCGWrapper.Enums;
 namespace WindBot.Game.AI.Decks
 {
     // IRL Yubel: both engines.
+    //  - Main line (the user's winning replays): Nightmare Throne adds Samsara D Lotus; Lotus tributes into Spirit of Yubel,
+    //    which Sets Nightmare Pain; Pain destroys Spirit (searching Eternal Favorite / Geistgrinder), Spirit brings Yubel and
+    //    Nightmare Throne answers with Terror Incarnate; in the End Phase Lotus returns and Yubel tributes Terror into The
+    //    Ultimate Nightmare. Eternal Favorite on their turn fuses their monsters into Loving Defender (500 burn each).
     //  - Yubel loop: destroy Yubel (Nightmare Throne from the Deck, Nightmare Pain from hand / field, Samsara D Lotus on
     //    their monster effect) so it brings out Terror Incarnate, which leaves for The Ultimate Nightmare. Geistgrinder Golem
     //    lands on their field and becomes Fusion material for Yubel - The Loving Defender Forever through Eternal Favorite.
@@ -57,12 +61,15 @@ namespace WindBot.Game.AI.Decks
         {
             // Responses
             AddExecutor(ExecutorType.Activate, CardId.SamsaraDLotus, LotusEffect);
+            AddExecutor(ExecutorType.Summon, CardId.SamsaraDLotus, () => !YubelOnField);
             AddExecutor(ExecutorType.Activate, CardId.ChaosCore, () => { Pick(CardId.Uria, CardId.Hamon, CardId.Raviel); return true; });
             AddExecutor(ExecutorType.Activate, CardId.SpiritOfYubel, SpiritEffect);
             AddExecutor(ExecutorType.Activate, CardId.CeruleanSkyfire, () => Duel.LastChainPlayer == 1 || Card.Location != CardLocation.SpellZone);
             AddExecutor(ExecutorType.Activate, CardId.GruesomeGraveSquirmer, SquirmerEffect);
-            AddExecutor(ExecutorType.Activate, CardId.TerrorIncarnate, () => { Pick(CardId.UltimateNightmare); return true; });
+            // End Phase effects are activated one at a time in our order: Yubel's tribute first (it tributes Terror Incarnate,
+            // which leaves for The Ultimate Nightmare before its wipe can start)
             AddExecutor(ExecutorType.Activate, CardId.Yubel, () => { Pick(CardId.TerrorIncarnate); return true; });
+            AddExecutor(ExecutorType.Activate, CardId.TerrorIncarnate, () => { Pick(CardId.UltimateNightmare); return true; });
             AddStaples();
 
             // Yubel loop
@@ -117,6 +124,43 @@ namespace WindBot.Game.AI.Decks
         };
 
         bool destroyYubelFromDeck;
+        bool SpiritSetsPain;
+        bool lotusToField;
+        bool lovingDefenderFusion;
+
+        // Loving Defender: Yubel plus every Effect Monster we can take from their field (500 burn per material)
+        public override IList<ClientCard> OnSelectFusionMaterial(IList<ClientCard> cards, int min, int max)
+        {
+            if (!lovingDefenderFusion) return base.OnSelectFusionMaterial(cards, min, max);
+            lovingDefenderFusion = false;
+            var yubel = cards.FirstOrDefault(c => c.Controller == 0 && c.IsCode(CardId.Yubel));
+            var result = new List<ClientCard>();
+            if (yubel != null) result.Add(yubel);
+            result.AddRange(cards.Where(c => c.Controller == 1));
+            if (result.Count < min) return base.OnSelectFusionMaterial(cards, min, max);
+            return result.Take(max).ToList();
+        }
+
+        // Yubel monsters work from Attack Position (they burn when attacked / after battling)
+        public override CardPosition OnSelectPosition(int cardId, IList<CardPosition> positions)
+        {
+            if (Yubels.Contains(cardId) || cardId == CardId.LovingDefender)
+                if (positions.Contains(CardPosition.FaceUpAttack)) return CardPosition.FaceUpAttack;
+            return base.OnSelectPosition(cardId, positions);
+        }
+
+        // The Ultimate Nightmare / Loving Defender can't be destroyed by battle and burn the monster they battle: attack the
+        // biggest one
+        public override bool OnPreBattleBetween(ClientCard attacker, ClientCard defender)
+        {
+            bool ok = base.OnPreBattleBetween(attacker, defender);
+            if (attacker.IsCode(CardId.UltimateNightmare, CardId.LovingDefender) && defender != null && defender.IsAttack())
+            {
+                attacker.RealPower = 99999;
+                return true;
+            }
+            return ok;
+        }
 
         bool YubelOnField => Bot.GetMonsters().Any(m => m.IsFaceup() && m.IsCode(Yubels));
         bool LordsOnField => Bot.GetMonsters().Any(m => m.IsCode(Beasts));
@@ -139,10 +183,11 @@ namespace WindBot.Game.AI.Decks
             if (Card.Location == CardLocation.Hand || (Card.Location == CardLocation.SpellZone && Card.IsFacedown()))
             {
                 // activation: destroy Yubel in the Deck so it brings Terror Incarnate, else add a 0/0 Fiend
-                destroyYubelFromDeck = !YubelOnField && TerrorReady && MaybeInDeck(CardId.Yubel, 2) && !Bot.HasInMonstersZone(CardId.TerrorIncarnate)
-                    && !LordsOnField;
+                bool lotusLine = !Bot.HasInHand(CardId.SamsaraDLotus) && MaybeInDeck(CardId.SamsaraDLotus, 2);
+                destroyYubelFromDeck = !lotusLine && !YubelOnField && TerrorReady && MaybeInDeck(CardId.Yubel, 2)
+                    && !Bot.HasInMonstersZone(CardId.TerrorIncarnate) && !LordsOnField;
                 if (destroyYubelFromDeck) Pick(CardId.Yubel);
-                else Pick(CardId.DarkSummoningBeast, CardId.SamsaraDLotus, CardId.Yubel, CardId.DarkBeckoningBeast);
+                else Pick(CardId.SamsaraDLotus, CardId.DarkSummoningBeast, CardId.Yubel, CardId.DarkBeckoningBeast);
                 return true;
             }
             // a Yubel left the field by card effect: fetch the next one
@@ -156,16 +201,17 @@ namespace WindBot.Game.AI.Decks
             if (!MyTurn) return false;
             // Terror Incarnate on the field becomes The Ultimate Nightmare (which doesn't wipe our board) first; otherwise
             // destroy Yubel (hand first) so Terror Incarnate arrives
-            var t = Bot.GetMonsters().FirstOrDefault(m => m.IsFaceup() && m.IsCode(CardId.TerrorIncarnate) && MaybeInDeck(CardId.UltimateNightmare, 1)
+            var t = Bot.GetMonsters().FirstOrDefault(m => m.IsFaceup() && m.IsCode(CardId.SpiritOfYubel) && !LordsOnField)
+                ?? Bot.GetMonsters().FirstOrDefault(m => m.IsFaceup() && m.IsCode(CardId.TerrorIncarnate) && MaybeInDeck(CardId.UltimateNightmare, 1)
                     && Bot.Hand.Any(c => c.IsCode(Beasts)))
                 ?? Bot.Hand.FirstOrDefault(c => c.IsCode(CardId.Yubel))
                 ?? Bot.GetMonsters().FirstOrDefault(m => m.IsFaceup() && m.IsCode(CardId.Yubel))
                 ?? Bot.GetMonsters().FirstOrDefault(m => m.IsFaceup() && m.IsCode(CardId.TerrorIncarnate) && MaybeInDeck(CardId.UltimateNightmare, 1));
             if (t != null && LordsOnField && !t.IsCode(CardId.TerrorIncarnate)) t = null; // Terror would wipe our Lords
-            if (t != null && (t.IsCode(CardId.TerrorIncarnate) || TerrorReady))
+            if (t != null && (t.IsCode(CardId.TerrorIncarnate, CardId.SpiritOfYubel) || TerrorReady))
             {
                 Pick(t);
-                Pick(CardId.NightmareThrone, CardId.SamsaraDLotus, CardId.EternalFavorite, CardId.SpiritOfYubel, CardId.Geistgrinder);
+                Pick(CardId.EternalFavorite, CardId.Geistgrinder, CardId.SamsaraDLotus, CardId.NightmareThrone, CardId.SpiritOfYubel);
                 return true;
             }
             // otherwise only a spare DARK monster in hand, for the search
@@ -182,24 +228,32 @@ namespace WindBot.Game.AI.Decks
 
         bool LotusEffect()
         {
-            if (Card.Location == CardLocation.Grave) return true; // End Phase: back to hand / field
+            if (Card.Location == CardLocation.Grave) { lotusToField = true; return true; } // End Phase: back to the field
             if (Card.Location == CardLocation.Hand) return false;
             if (!MyTurn)
             {
                 // their monster effect becomes "destroy 1 Yubel": our Yubel moves up the chain
                 return Duel.LastChainPlayer == 1 && YubelOnField && Bot.GetMonsters().Any(m => m.IsCode(CardId.Yubel, CardId.TerrorIncarnate));
             }
-            // tribute: Yubel from the Deck
+            // tribute: Spirit of Yubel from the Deck (it Sets Nightmare Pain), else Yubel
             if (YubelOnField) return false;
-            Pick(CardId.Yubel, CardId.SpiritOfYubel);
+            Pick(MaybeInDeck(CardId.SpiritOfYubel, 2) ? new[] { CardId.SpiritOfYubel, CardId.Yubel } : new[] { CardId.Yubel, CardId.SpiritOfYubel });
             return true;
         }
 
         bool SpiritEffect()
         {
             if (Card.Location == CardLocation.Hand) return true;
-            Pick(CardId.NightmareThrone, CardId.NightmarePain, CardId.EternalFavorite, CardId.MatureChronicle);
-            Pick(CardId.UltimateNightmare, CardId.TerrorIncarnate, CardId.Yubel);
+            if (Card.Location == CardLocation.MonsterZone)
+            {
+                // Special Summoned: Set Nightmare Pain (it destroys Spirit next), else Eternal Favorite / Throne
+                SpiritSetsPain = true;
+                Pick(Bot.HasInSpellZone(CardId.NightmarePain) ? new[] { CardId.EternalFavorite, CardId.NightmareThrone, CardId.MatureChronicle }
+                    : new[] { CardId.NightmarePain, CardId.EternalFavorite, CardId.NightmareThrone });
+                return true;
+            }
+            // destroyed: Yubel (Nightmare Throne then answers with Terror Incarnate)
+            Pick(CardId.Yubel, CardId.TerrorIncarnate, CardId.UltimateNightmare);
             return true;
         }
 
@@ -221,9 +275,12 @@ namespace WindBot.Game.AI.Decks
 
         bool EternalFavoriteEffect()
         {
-            if (!MyTurn) return false;
-            if (Bot.HasInExtra(CardId.LovingDefender) && Bot.GetMonsters().Any(m => m.IsFaceup() && m.IsCode(CardId.Yubel)) && Bot.Hand.Count > 0)
+            if (Card.IsFacedown() && Card.Location == CardLocation.SpellZone && MyTurn) return false; // keep it for their turn
+            bool theirMonsters = Enemy.GetMonsters().Count(m => m.IsFaceup() && m.HasType(CardType.Effect)) >= 1;
+            if (Bot.HasInExtra(CardId.LovingDefender) && Bot.GetMonsters().Any(m => m.IsFaceup() && m.IsCode(CardId.Yubel)) && Bot.Hand.Count > 0
+                && (theirMonsters || MyTurn))
             {
+                lovingDefenderFusion = true;
                 // Fusion with their monsters as material: the burn counts every material
                 Pick(Bot.Hand.OrderBy(c => Rank(ExpendablePriority, c)).ThenBy(CardValue).First());
                 Pick(CardId.LovingDefender);
@@ -341,12 +398,24 @@ namespace WindBot.Game.AI.Decks
 
         public override int OnSelectOption(IList<long> options)
         {
+            if (SpiritSetsPain)
+            {
+                int set = options.IndexOf(Util.GetStringId(CardId.SpiritOfYubel, 4));
+                if (set >= 0) { SpiritSetsPain = false; return set; }
+            }
+            if (lotusToField)
+            {
+                int ss = options.IndexOf(Util.GetStringId(CardId.SamsaraDLotus, 3));
+                if (ss >= 0) { lotusToField = false; return ss; }
+            }
             int tribute = options.IndexOf(Util.GetStringId(CardId.Yubel, 3));
             int destroy = options.IndexOf(Util.GetStringId(CardId.Yubel, 4));
             if (tribute >= 0 && destroy >= 0)
             {
-                var junk = Bot.GetMonsters().Where(m => !m.IsCode(Beasts) && !m.IsCode(Yubels) && !m.IsCode(CardId.Armityle, CardId.LovingDefender, CardId.Trilojig))
-                    .OrderBy(m => Rank(ExpendablePriority, m)).ThenBy(CardValue).FirstOrDefault();
+                // Terror Incarnate first: it leaves for The Ultimate Nightmare; else junk (Lotus comes back next End Phase)
+                var junk = Bot.GetMonsters().FirstOrDefault(m => m.IsFaceup() && m.IsCode(CardId.TerrorIncarnate) && MaybeInDeck(CardId.UltimateNightmare, 1))
+                    ?? Bot.GetMonsters().Where(m => !m.IsCode(Beasts) && !m.IsCode(Yubels) && !m.IsCode(CardId.Armityle, CardId.LovingDefender, CardId.Trilojig))
+                    .OrderBy(m => m.IsCode(CardId.SamsaraDLotus) ? 0 : 1).ThenBy(m => Rank(ExpendablePriority, m)).ThenBy(CardValue).FirstOrDefault();
                 if (junk == null) return destroy;
                 Pick(junk);
                 return tribute;
