@@ -4,5 +4,35 @@
         "deck": "Slasher",
         "difficulty": 2,
         "masterRules": [ 5 ]
+    },
+    {
+        "name": "IRL Chaos",
+        "deck": "IRL_Chaos",
+        "difficulty": 2,
+        "masterRules": [ 5 ]
+    },
+    {
+        "name": "IRL Frog",
+        "deck": "IRL_Frog",
+        "difficulty": 2,
+        "masterRules": [ 5 ]
+    },
+    {
+        "name": "IRL Dragon Ruler",
+        "deck": "IRL_DragonRuler",
+        "difficulty": 2,
+        "masterRules": [ 5 ]
+    },
+    {
+        "name": "IRL HERO",
+        "deck": "IRL_Hero",
+        "difficulty": 2,
+        "masterRules": [ 5 ]
+    },
+    {
+        "name": "IRL Cyber Dragon",
+        "deck": "IRL_CyberDragon",
+        "difficulty": 2,
+        "masterRules": [ 5 ]
     }
 ]

@@ -1,6 +1,7 @@
 # Custom WindBot decks
 
-AI opponents for the custom decks in this repo. Currently: **Slasher**.
+AI opponents for the custom decks in this repo and for the owner's irl decks: **Slasher**, **IRL Chaos**, **IRL Frog**,
+**IRL Dragon Ruler**, **IRL HERO** and **IRL Cyber Dragon**.
 
 EDOPro's repo sync only brings cards, scripts and pictures, so the bot needs a one-time install on each device
 (and again after pulling a bot update or updating EDOPro, since EDOPro updates replace `WindBot/bots.json`).
@@ -20,13 +21,13 @@ If the repo is cloned inside EDOPro (`<EDOPro>/repositories/<name>`), `-EdoPath`
 Inside the EDOPro folder on the device (the one containing `deck`, `repositories` and `WindBot`):
 
 1. Copy `WindBot/Executors/CustomBots.dll` from this repo to `EDOPro/WindBot/Executors/` (create the folder if needed).
-2. Copy `WindBot/Decks/AI_Slasher.ydk` to `EDOPro/WindBot/Decks/`.
-3. Open `EDOPro/WindBot/bots.json` and add the entry from `bots-custom.json` inside the outer `[ ]`
+2. Copy every `.ydk` in `WindBot/Decks/` to `EDOPro/WindBot/Decks/`.
+3. Open `EDOPro/WindBot/bots.json` and add the entries from `bots-custom.json` inside the outer `[ ]`
    (put a comma after the previous entry).
 
 ## Using it
 
-Host a game, click "Add AI" and pick **Slasher** from the deck list.
+Host a game, click "Add AI" and pick one of the bots above from the deck list.
 
 ## Rebuilding the bot
 
