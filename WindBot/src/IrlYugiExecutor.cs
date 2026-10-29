@@ -114,7 +114,10 @@ namespace WindBot.Game.AI.Decks
             // Light and Darkness Ritual engine
             AddExecutor(ExecutorType.Activate, CardId.SkullArchfiend, SkullArchfiendEffect);
             AddExecutor(ExecutorType.Activate, CardId.LaDR, LaDREffect);
-            AddExecutor(ExecutorType.Summon, CardId.CelticMystic, () => Bot.Hand.Any(c => c.IsCode(CardId.LaDR, CardId.BLS, CardId.BlackChaos, CardId.SkullArchfiend, CardId.MindShuffle)));
+            // Celtic Mystic when it can tribute into a Ritual monster in hand; with Magician's Rod and no Ritual monster the
+            // Rod > Curtain > Dark Magician line comes first
+            AddExecutor(ExecutorType.Summon, CardId.CelticMystic, () => Bot.Hand.Any(c => c.IsCode(LaDRMonsters))
+                || !Bot.HasInHand(CardId.MagiciansRod) && Bot.Hand.Any(c => c.IsCode(CardId.LaDR, CardId.SkullArchfiend, CardId.MindShuffle)));
             AddExecutor(ExecutorType.Activate, CardId.CelticMystic, CelticMysticEffect);
             AddExecutor(ExecutorType.Activate, CardId.BLS, () => TargetEnemyCard());
             AddExecutor(ExecutorType.Activate, CardId.BlackChaos, BlackChaosEffect);
@@ -263,9 +266,22 @@ namespace WindBot.Game.AI.Decks
                 Pick(Bot.Hand.Any(c => c.IsCode(CardId.BLS)) && Enemy.GetFieldCount() > 0 ? new[] { CardId.BLS, CardId.BlackChaos } : new[] { CardId.BlackChaos, CardId.BLS });
                 return true;
             }
-            // reveal and draw 3, discard 2: Skull Archfiend first
-            Pick(CardId.SkullArchfiend);
+            // reveal and draw 3, discard 2: Skull Archfiend first (it fetches the Ritual), then the least useful cards; keep
+            // the Ritual Spell, its monsters, Mind Shuffle and one Dark Magician
+            PickLater(YugiDiscards);
+            PickLater(YugiDiscards);
             return true;
+        }
+
+        IEnumerable<ClientCard> YugiDiscards()
+        {
+            var keep = new[] { CardId.LaDR, CardId.BLS, CardId.BlackChaos, CardId.MindShuffle, CardId.CelticMystic, CardId.MagiciansRod, CardId.EternalSoul };
+            int dms = Bot.Hand.Count(c => c.IsCode(CardId.DarkMagician));
+            return Bot.Hand.OrderBy(c => c.IsCode(CardId.SkullArchfiend) ? 0
+                    : c.IsCode(CardId.DarkMagician) && dms > 1 ? 1
+                    : c.IsCode(CardId.Griffoh, CardId.MultiplyingKuriboh, CardId.CelticGuardian, CardId.BusterBlader, CardId.CurseOfDragonfire) ? 2
+                    : c.IsCode(keep) ? 9 : 5)
+                .ThenBy(c => Rank(ExpendablePriority, c));
         }
 
         bool BlackChaosEffect()
@@ -317,6 +333,8 @@ namespace WindBot.Game.AI.Decks
 
         bool EternalSoulEffect()
         {
+            // negated Eternal Soul is destroyed and destroys our whole board
+            if (EnemySpellTrapNegateReady) return false;
             if (Card.Location == CardLocation.Hand) return true;
             // their turn: bring Dark Magician (Dark Magical Circle banishes on its summon) in response, or before they attack
             if (!MyTurn) return (Duel.LastChainPlayer == 1 || Duel.Phase == DuelPhase.BattleStart || Duel.Phase == DuelPhase.End)

@@ -372,6 +372,8 @@ namespace WindBot.Game.AI.Decks
 
         bool TrueLightEffect()
         {
+            // negated True Light is destroyed and destroys our whole board
+            if (EnemySpellTrapNegateReady) return false;
             if (Card.Location == CardLocation.Hand) return true;
             if (Bot.HasInHand(CardId.BlueEyes) || Bot.HasInGraveyard(CardId.BlueEyes)) { Pick(CardId.BlueEyes); return true; }
             Pick(CardId.BurstStream, CardId.MajestyOfTheWhiteDragons, CardId.Roar, CardId.UltimateCreature);

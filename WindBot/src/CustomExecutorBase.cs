@@ -100,6 +100,28 @@ namespace WindBot.Game.AI.Decks
             return c.IsFaceup() ? 1000 : 1200;
         }
 
+        // ---------- opponent's Spell/Trap negation ----------
+
+        // Cards that negate our Spell/Trap activations once per turn. Spells/Traps that wreck our own board when they are
+        // negated and destroyed (True Light, Eternal Soul) wait until the negation is used.
+        static readonly int[] SpellTrapNegators = { 90809975 }; // Toadally Awesome
+        bool enemyNegateUsed;
+
+        protected bool EnemySpellTrapNegateReady => !enemyNegateUsed
+            && Enemy.GetMonsters().Any(m => m.IsFaceup() && m.IsCode(SpellTrapNegators) && m.Overlays.Count > 0 && !m.IsDisabled());
+
+        public override void OnChaining(int player, ClientCard card)
+        {
+            if (player == 1 && card != null && card.IsCode(SpellTrapNegators)) enemyNegateUsed = true;
+            base.OnChaining(player, card);
+        }
+
+        public override void OnNewTurn()
+        {
+            enemyNegateUsed = false;
+            base.OnNewTurn();
+        }
+
         // ---------- explicit picks ----------
 
         readonly List<System.Func<IList<ClientCard>, IList<ClientCard>>> picks = new List<System.Func<IList<ClientCard>, IList<ClientCard>>>();
@@ -118,6 +140,12 @@ namespace WindBot.Game.AI.Decks
         {
             var list = preferred.ToList();
             picks.Add(cards => list.Where(cards.Contains).ToList());
+        }
+
+        // evaluated when the prompt arrives (e.g. discards after a draw)
+        protected void PickLater(System.Func<IEnumerable<ClientCard>> preferred)
+        {
+            picks.Add(cards => preferred().Where(cards.Contains).ToList());
         }
 
         public override void OnChainEnd()
