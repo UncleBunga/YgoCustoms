@@ -93,7 +93,7 @@ namespace WindBot.Game.AI.Decks
             AddExecutor(ExecutorType.Activate, CardId.SchismBox);
             AddExecutor(ExecutorType.Activate, CardId.Showdown, ShowdownEffect);
             AddExecutor(ExecutorType.Activate, CardId.DollStore, DollStoreEffect);
-            AddExecutor(ExecutorType.SpSummon, CardId.PlasticPartner);
+            AddExecutor(ExecutorType.SpSummon, CardId.PlasticPartner, () => CountSummon());
             AddExecutor(ExecutorType.Activate, CardId.PlasticPartner, PlasticPartnerEffect);
             AddExecutor(ExecutorType.Activate, CardId.Brute, BruteEffect);
             AddExecutor(ExecutorType.Activate, CardId.Miner, MinerEffect);
@@ -107,6 +107,9 @@ namespace WindBot.Game.AI.Decks
             AddExecutor(ExecutorType.Activate, CardId.Damballa, DamballaActivate);
             AddExecutor(ExecutorType.Activate, CardId.BrittleBlessing, BrittleBlessingActivate);
 
+            // Synchro branches when the opponent has a board, then the Stalker link
+            AddExecutor(ExecutorType.SpSummon, CardId.CosmicEntity, () => EnemyHasBoard && CosmicEntitySummon());
+            AddExecutor(ExecutorType.SpSummon, CardId.Entity, EntitySummon);
             // Combo: link Cackler + Plastic Partner into Ancient Stalker (searches Hunting Grounds) before reviving
             AddExecutor(ExecutorType.SpSummon, CardId.AncientStalker, StalkerSummon);
             AddExecutor(ExecutorType.Activate, CardId.AncientStalker, StalkerEffect);
@@ -124,10 +127,10 @@ namespace WindBot.Game.AI.Decks
             AddExecutor(ExecutorType.Activate, CardId.Messenger, MessengerEffect);
 
             // Extra Deck
-            AddExecutor(ExecutorType.SpSummon, CardId.CosmicEntity, ExtraDeckSummon);
+            AddExecutor(ExecutorType.SpSummon, CardId.CosmicEntity, CosmicEntitySummon);
             AddExecutor(ExecutorType.SpSummon, CardId.PreordainedDesign, PreordainedSummon);
-            AddExecutor(ExecutorType.SpSummon, CardId.Entity, ExtraDeckSummon);
-            AddExecutor(ExecutorType.SpSummon, CardId.DollHeir, ExtraDeckSummon);
+            AddExecutor(ExecutorType.SpSummon, CardId.Entity, EntitySummon);
+            AddExecutor(ExecutorType.SpSummon, CardId.DollHeir, DollHeirSummon);
 
             // Normal Summons
             AddExecutor(ExecutorType.Summon, CardId.Cackler, NormalSummon);
@@ -179,14 +182,35 @@ namespace WindBot.Game.AI.Decks
         public override void OnNewTurn()
         {
             summonedThisTurn = false;
+            if (!TowTruckUp) killCounters = 0;
             base.OnNewTurn();
         }
 
         bool NormalSummon()
         {
             summonedThisTurn = true;
+            if (TowTruckUp) killCounters++;
             return true;
         }
+
+        // Kill Counters on our side, estimated: Tow Truck gains one per Slasher summon, costs spend them.
+        int killCounters;
+        bool TowTruckUp => Bot.SpellZone.Any(c => c != null && c.IsFaceup() && c.IsCode(CardId.TowTruck));
+
+        // Called by our own actions that Special Summon a Slasher (only hooks present in every ExecutorBase are used)
+        bool CountSummon(bool result = true)
+        {
+            if (result && TowTruckUp) killCounters++;
+            return result;
+        }
+
+        static readonly int[] Bosses = {
+            CardId.DrownedRevenant, CardId.Shape, CardId.DreamDemon, CardId.Patriarch, CardId.WellDweller,
+            CardId.CosmicEntity, CardId.PreordainedDesign, CardId.Entity
+        };
+
+        // Slashers we are happy to use as Link/Synchro material
+        bool Fodder(ClientCard m) => m.IsFaceup() && IsSlasher(m) && !m.IsCode(Bosses) && m.Attack < 2000;
 
         // Copies we can see (hand, field, GY, banished); anything else may still be in the Deck
         int Seen(int id) => Bot.Hand.Count(c => c.IsCode(id)) + Bot.GetMonsters().Count(c => c.IsCode(id))
@@ -313,6 +337,22 @@ namespace WindBot.Game.AI.Decks
         bool ShowdownEffect()
         {
             if (Card.Location == CardLocation.Grave) return true;
+            bool revivalInHand = Bot.Hand.Any(c => c.IsCode(CardId.LightningRevival, CardId.ChestOfSouls, CardId.CurseOfThorn));
+            if (killCounters == 0 && !revivalInHand)
+            {
+                // no Quick-Play coming: Dream Demon destroys a card every End Phase from the GY
+                Pick(CardId.DreamDemon, CardId.DrownedRevenant, CardId.Shape);
+                return true;
+            }
+            if (killCounters == 0 && revivalInHand)
+            {
+                // match the boss to the revival spell already in hand
+                if (Bot.HasInHand(CardId.LightningRevival)) Pick(CardId.DrownedRevenant, CardId.DreamDemon, CardId.Shape);
+                else if (Bot.HasInHand(CardId.CurseOfThorn)) Pick(CardId.Shape, CardId.DrownedRevenant, CardId.DreamDemon);
+                else Pick(CardId.DreamDemon, CardId.DrownedRevenant, CardId.Shape);
+                return true;
+            }
+            killCounters--;
             if (MaybeInDeck(CardId.DrownedRevenant, 1) && MaybeInDeck(CardId.LightningRevival, 1))
             {
                 Pick(CardId.DrownedRevenant);
@@ -336,7 +376,7 @@ namespace WindBot.Game.AI.Decks
             // free search; prefer to resolve it on the opponent's End Phase or our own Main Phase
             if (!MyTurn && Duel.Phase != DuelPhase.End) return false;
             Pick(CardId.PlasticPartner, CardId.HallowsGuard, CardId.Messenger, CardId.PossessedPuppet);
-            return true;
+            return CountSummon();
         }
 
         bool PlasticPartnerEffect()
@@ -345,10 +385,13 @@ namespace WindBot.Game.AI.Decks
             {
                 // search: Showdown to set up the revival line (Stalker then fetches the field spell),
                 // otherwise field spell, then Tow Truck, then the ritual line
-                bool revivalLine = ComboAvailable && MaybeInDeck(CardId.DrownedRevenant, 1) && MaybeInDeck(CardId.Showdown, 1)
+                bool revivalLine = MaybeInDeck(CardId.DrownedRevenant, 1) && MaybeInDeck(CardId.Showdown, 1)
                     && (MaybeInDeck(CardId.LightningRevival, 1) || MaybeInDeck(CardId.ChestOfSouls, 1) || MaybeInDeck(CardId.CurseOfThorn, 1));
-                if (revivalLine) Pick(CardId.Showdown, CardId.HuntingGrounds, CardId.TowTruck);
-                else if (Bot.SpellZone[5] == null && !Bot.HasInHand(CardId.HuntingGrounds)) Pick(CardId.HuntingGrounds);
+                // Showdown only fetches its Quick-Play if a Kill Counter can be removed
+                if (revivalLine && killCounters > 0) Pick(CardId.Showdown, CardId.HuntingGrounds, CardId.TowTruck);
+                else if (!TowTruckUp && !Bot.HasInHand(CardId.TowTruck) && MaybeInDeck(CardId.TowTruck, 3)) Pick(CardId.TowTruck, CardId.HuntingGrounds);
+                else if (Bot.SpellZone[5] == null && !Bot.HasInHand(CardId.HuntingGrounds) && !ComboAvailable) Pick(CardId.HuntingGrounds);
+                else if (MaybeInDeck(CardId.Showdown, 1) && MaybeInDeck(CardId.DreamDemon, 1)) Pick(CardId.Showdown, CardId.HuntingGrounds);
                 else if (!Bot.HasInHandOrInSpellZone(CardId.TowTruck)) Pick(CardId.TowTruck);
                 else Pick(CardId.SchismBox, CardId.ChestOfSouls, CardId.LightningRevival, CardId.CurseOfThorn, CardId.Damballa);
             }
@@ -358,7 +401,7 @@ namespace WindBot.Game.AI.Decks
         bool BruteEffect()
         {
             Pick(TrapSetPriority.Reverse().ToArray()); // reveal the least valuable trap
-            return true;
+            return CountSummon();
         }
 
         bool MinerEffect()
@@ -392,8 +435,10 @@ namespace WindBot.Game.AI.Decks
             var tribute = Bot.GetMonsters().Where(m => IsCannibal(m) && !m.IsCode(CardId.Patriarch)).OrderBy(m => m.Attack).FirstOrDefault();
             if (tribute == null) return false;
             if (tribute.Attack >= 2400 && Bot.SpellZone[5] != null) return false;
+            // don't eat a Stalker material while the link is still possible
+            if (ComboAvailable && Bot.GetMonsters().Count(Fodder) == 2 && Fodder(tribute)) return false;
             Pick(tribute);
-            return true;
+            return CountSummon();
         }
 
         bool PuppetEffect()
@@ -487,11 +532,11 @@ namespace WindBot.Game.AI.Decks
             // On our turn use it in Main Phase 1; on theirs, at the End Phase or to block a lethal attack
             if (MyTurn && Duel.Phase != DuelPhase.Main1) return false;
             if (MyTurn && Duel.CurrentChain.Count > 0) return false; // let searches resolve (field spell first)
-            if (MyTurn && ComboAvailable && Bot.GetMonsters().Count(m => m.IsFaceup() && IsSlasher(m) && m.Attack < 1500) >= 2) return false; // link first
+            if (MyTurn && ComboAvailable && Bot.GetMonsters().Count(Fodder) >= 2) return false; // link first
             if (MyTurn && Bot.HasInHand(CardId.HuntingGrounds) && Bot.SpellZone[5] == null) return false; // field spell first
             if (!MyTurn && Duel.Phase != DuelPhase.End && !(Duel.Phase == DuelPhase.BattleStart && Bot.GetMonsterCount() == 0)) return false;
             Pick(target);
-            return true;
+            return CountSummon();
         }
 
         bool CallerEffect()
@@ -513,6 +558,59 @@ namespace WindBot.Game.AI.Decks
             return Bot.GetMonsterCount() >= 2;
         }
 
+        // Tuner + non-Tuner face-up monsters whose Levels add up exactly; non-Tuners must be Slashers if slasherOnly
+        List<ClientCard> SynchroMaterials(int level, bool slasherOnly, bool allowBosses)
+        {
+            var mons = Bot.GetMonsters().Where(m => m.IsFaceup() && m.Level > 0 && !m.HasType(CardType.Xyz | CardType.Link)).ToList();
+            foreach (var tuner in mons.Where(m => m.IsTuner()).OrderBy(m => m.Attack))
+            {
+                var others = mons.Where(m => m != tuner && (!slasherOnly || IsSlasher(m)) && (allowBosses || !m.IsCode(Bosses)))
+                    .OrderBy(m => m.IsTuner() ? 1 : 0).ThenBy(m => m.Attack).ToList();
+                // small subset search (field has at most 7 monsters)
+                for (int mask = 1; mask < (1 << others.Count); mask++)
+                {
+                    var pick = Enumerable.Range(0, others.Count).Where(i => (mask & (1 << i)) != 0).Select(i => others[i]).ToList();
+                    if (pick.Any(m => m.IsTuner()) && pick.All(m => m.IsTuner())) continue;
+                    if (tuner.Level + pick.Sum(m => m.Level) == level)
+                        return new List<ClientCard> { tuner }.Concat(pick).ToList();
+                }
+            }
+            return null;
+        }
+
+        bool EnemyHasBoard => Enemy.GetMonsters().Any(m => m.IsFaceup() && m.Attack >= 2000) || Enemy.GetFieldCount() >= 3;
+
+        bool CosmicEntitySummon()
+        {
+            // Lv10: negates the opponent's face-up cards; worth spending a boss on only when they have a board
+            var mats = SynchroMaterials(10, true, EnemyHasBoard) ?? (EnemyHasBoard ? null : SynchroMaterials(10, true, false));
+            if (mats == null) return false;
+            if (!EnemyHasBoard && mats.Any(m => m.IsCode(Bosses))) return false;
+            AI.SelectMaterials(mats);
+            return true;
+        }
+
+        bool EntitySummon()
+        {
+            // Lv6, 0 ATK: steals the ATK of their best monster, so only when they have one worth stealing
+            if (!Enemy.GetMonsters().Any(m => m.IsFaceup() && m.BaseAttack >= 2000)) return false;
+            var mats = SynchroMaterials(6, false, false);
+            if (mats == null) return false;
+            AI.SelectMaterials(mats);
+            return true;
+        }
+
+        bool DollHeirSummon()
+        {
+            var lv2 = Bot.GetMonsters().Where(m => Fodder(m) && m.Level == 2 && !m.HasType(CardType.Xyz | CardType.Link))
+                .OrderBy(m => m.Attack).ToList();
+            if (lv2.Count < 2) return false;
+            // keep two bodies for Ancient Stalker if it is still in the Extra Deck
+            if (ComboAvailable && Bot.GetMonsters().Count(Fodder) < 4) return false;
+            AI.SelectMaterials(lv2.Take(2).ToList());
+            return true;
+        }
+
         bool PreordainedSummon()
         {
             // 3 Slashers on the field become a protected removal engine; do it when we are behind on board
@@ -521,8 +619,9 @@ namespace WindBot.Game.AI.Decks
 
         bool StalkerSummon()
         {
-            var cheap = Bot.GetMonsters().Where(m => m.IsFaceup() && IsSlasher(m) && m.Attack < 1500).OrderBy(m => m.Attack).Take(2).ToList();
+            var cheap = Bot.GetMonsters().Where(Fodder).OrderBy(m => m.Attack).Take(2).ToList();
             if (cheap.Count < 2) return false;
+            if (TowTruckUp) killCounters++;
             AI.SelectMaterials(cheap);
             return true;
         }
@@ -632,6 +731,26 @@ namespace WindBot.Game.AI.Decks
             int ct = options.IndexOf(Util.GetStringId(CardId.Showdown, 2));
             if (ct >= 0) return Bot.SpellZone[5] != null ? ct : options.Count - 1;
             return base.OnSelectOption(options);
+        }
+
+        public override IList<ClientCard> OnSelectSum(IList<ClientCard> cards, int sum, int min, int max, long hint, bool mode)
+        {
+            if (hint != HintMsg.Release) return null;
+            // preference: Hallows Guard (search when it hits the GY) > GY (banished by Damballa) > dead hand cards > field
+            var order = cards.OrderBy(c => c.IsCode(CardId.HallowsGuard) ? 0 : c.Location == CardLocation.Grave ? 1
+                    : c.Location == CardLocation.Hand ? (IsSlasher(c) ? 3 : 2) : 4)
+                .ThenBy(c => c.Location == CardLocation.Grave ? -c.Level : CardValue(c)).ToList();
+            var chosen = new List<ClientCard>();
+            foreach (var c in order)
+            {
+                if (chosen.Sum(x => x.Level) >= sum) break;
+                chosen.Add(c);
+            }
+            if (chosen.Sum(x => x.Level) < sum) return null;
+            // drop anything not needed to reach the total (the engine rejects extra materials)
+            foreach (var c in chosen.OrderBy(x => x.Level).ToList())
+                if (chosen.Sum(x => x.Level) - c.Level >= sum) chosen.Remove(c);
+            return chosen;
         }
 
         public override bool OnSelectHand()
