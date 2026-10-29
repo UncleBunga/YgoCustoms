@@ -142,6 +142,12 @@ namespace WindBot.Game.AI.Decks
             picks.Add(cards => list.Where(cards.Contains).ToList());
         }
 
+        // orders whatever the prompt offers (lowest rank first)
+        protected void PickRanked(System.Func<ClientCard, int> rank)
+        {
+            picks.Add(cards => cards.OrderBy(rank).ToList());
+        }
+
         // evaluated when the prompt arrives (e.g. discards after a draw)
         protected void PickLater(System.Func<IEnumerable<ClientCard>> preferred)
         {

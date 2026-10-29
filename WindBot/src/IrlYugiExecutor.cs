@@ -108,7 +108,8 @@ namespace WindBot.Game.AI.Decks
             AddExecutor(ExecutorType.Activate, CardId.PharaohsServant, PharaohsServantEffect);
             AddExecutor(ExecutorType.Activate, CardId.DarkPaladin, () => Duel.LastChainPlayer == 1 && Bot.Hand.Count > 0);
             AddExecutor(ExecutorType.Activate, CardId.ArcanaKnightJoker, () => Duel.LastChainPlayer == 1);
-            AddExecutor(ExecutorType.Activate, CardId.Griffoh, () => !MyTurn && (Duel.Phase == DuelPhase.BattleStep || Duel.Phase == DuelPhase.Damage));
+            AddExecutor(ExecutorType.Activate, CardId.Griffoh, GriffohEffect);
+            AddExecutor(ExecutorType.Activate, CardId.MultiplyingKuriboh, MultiplyingKuribohEffect);
             AddStaples();
 
             // Light and Darkness Ritual engine
@@ -203,12 +204,56 @@ namespace WindBot.Game.AI.Decks
         {
             if (Card.IsFacedown()) return !MyTurn && (Duel.Phase == DuelPhase.End || Duel.LastChainPlayer == 1) || MyTurn && Duel.Phase == DuelPhase.Main1;
             if (Desc(CardId.MindShuffle, 1)) return MindShuffleSwap();
-            // search: Skull Archfiend (discarded, it fetches the Ritual Spell + a Ritual monster), else Celtic Mystic
-            bool needRitual = !Bot.Hand.Any(c => c.IsCode(LaDRMonsters));
             if (!MyTurn && Duel.Phase != DuelPhase.End && Duel.LastChainPlayer != 1) return false;
-            Pick(needRitual ? new[] { CardId.SkullArchfiend, CardId.CelticMystic } : new[] { CardId.CelticMystic, CardId.SkullArchfiend });
-            Pick(CardId.SkullArchfiend, CardId.Griffoh, CardId.MultiplyingKuriboh, CardId.CelticGuardian);
+            // always through Skull Archfiend: search it (or keep one in hand) and discard it; in the GY it sends the Ritual
+            // Spell (fine there) and adds the Ritual monster we lack, keeping one of BLS / Black Chaos on the field and
+            // the other in hand
+            if (Bot.HasInHand(CardId.SkullArchfiend) || !MaybeInDeck(CardId.SkullArchfiend, 2))
+            {
+                var onField = OurLaDR;
+                Pick(onField != null && onField.IsCode(CardId.BLS) ? new[] { CardId.BlackChaos, CardId.BLS, CardId.CelticMystic }
+                    : new[] { CardId.BLS, CardId.BlackChaos, CardId.CelticMystic });
+            }
+            else Pick(CardId.SkullArchfiend);
+            PickLater(YugiDiscards);
             return true;
+        }
+
+        bool MindShuffleAvailable => Bot.HasInHand(CardId.MindShuffle) || Bot.GetSpells().Any(c => c.IsCode(CardId.MindShuffle));
+        bool kuribohWantsGriffoh;
+
+        bool MultiplyingKuribohEffect()
+        {
+            if (Card.Location == CardLocation.Hand) return !MyTurn; // Special Summon on their monster effect / attack
+            // add Griffoh to set Mind Shuffle; else Dark Magician
+            kuribohWantsGriffoh = !MindShuffleAvailable && MaybeInDeck(CardId.Griffoh, 1);
+            Pick(kuribohWantsGriffoh ? new[] { CardId.Griffoh, CardId.DarkMagician, CardId.Magikuriboh } : new[] { CardId.DarkMagician, CardId.Griffoh, CardId.Magikuriboh });
+            return true;
+        }
+
+        bool GriffohEffect()
+        {
+            if (Card.Location != CardLocation.Hand) return false;
+            // discard: Set Mind Shuffle from the Deck (usable this turn); otherwise zero the damage when it matters
+            if (!MindShuffleAvailable && MaybeInDeck(CardId.MindShuffle, 2)) { griffohSetsShuffle = true; Pick(CardId.MindShuffle); return true; }
+            griffohSetsShuffle = false;
+            return !MyTurn && (Duel.Phase == DuelPhase.BattleStep || Duel.Phase == DuelPhase.Damage) && Bot.LifePoints <= 4000;
+        }
+        bool griffohSetsShuffle;
+
+        public override int OnSelectOption(IList<long> options)
+        {
+            if (griffohSetsShuffle)
+            {
+                int i = options.IndexOf(Util.GetStringId(CardId.Griffoh, 2));
+                if (i >= 0) { griffohSetsShuffle = false; return i; }
+            }
+            if (kuribohWantsGriffoh)
+            {
+                int i = options.IndexOf(1190); // add to hand rather than Special Summon
+                if (i >= 0) { kuribohWantsGriffoh = false; return i; }
+            }
+            return base.OnSelectOption(options);
         }
 
         bool MindShuffleSwap()
@@ -234,7 +279,8 @@ namespace WindBot.Game.AI.Decks
             {
                 // sent to the GY: send Light and Darkness Ritual, add the Ritual monster we lack
                 Pick(CardId.LaDR);
-                Pick(Bot.Hand.Any(c => c.IsCode(CardId.BlackChaos)) ? new[] { CardId.BLS, CardId.BlackChaos } : new[] { CardId.BlackChaos, CardId.BLS });
+                bool haveChaos = Bot.Hand.Any(c => c.IsCode(CardId.BlackChaos)) || Bot.HasInMonstersZone(CardId.BlackChaos);
+                Pick(haveChaos ? new[] { CardId.BLS, CardId.BlackChaos } : new[] { CardId.BlackChaos, CardId.BLS });
                 return true;
             }
             // shuffle 3 GY cards back to Special Summon itself: a body for the Ritual
@@ -248,8 +294,10 @@ namespace WindBot.Game.AI.Decks
                 // add itself plus a card that mentions it
                 if (!MyTurn) return false;
                 Pick(CardId.LaDR);
-                Pick(Bot.Hand.Any(c => c.IsCode(LaDRMonsters)) ? new[] { CardId.CelticMystic, CardId.MindShuffle, CardId.SkullArchfiend }
-                    : new[] { CardId.BlackChaos, CardId.BLS, CardId.SkullArchfiend, CardId.MindShuffle });
+                // Mind Shuffle first whenever we lack one (Blue-Eyes can't get through it), then the Ritual pieces
+                if (!MindShuffleAvailable) Pick(CardId.MindShuffle, CardId.SkullArchfiend, CardId.BlackChaos, CardId.BLS);
+                else Pick(Bot.Hand.Any(c => c.IsCode(LaDRMonsters)) ? new[] { CardId.CelticMystic, CardId.SkullArchfiend }
+                    : new[] { CardId.BlackChaos, CardId.BLS, CardId.SkullArchfiend });
                 return true;
             }
             // BLS when there is a card to banish, else Black Chaos (protects the backrow)
@@ -316,7 +364,9 @@ namespace WindBot.Game.AI.Decks
             {
                 if (!MyTurn) return false;
                 // reveal: add Magician's Rod (or Dark Magician), then put the least useful card on top
-                Pick(Bot.HasInHand(CardId.MagiciansRod) ? new[] { CardId.DarkMagician } : new[] { CardId.MagiciansRod, CardId.DarkMagician });
+                // the anti-Blue-Eyes line: Multiplying Kuriboh > Griffoh sets Mind Shuffle; else Magician's Rod > Curtain
+                if (!MindShuffleAvailable && MaybeInDeck(CardId.MultiplyingKuriboh, 1) && MaybeInDeck(CardId.Griffoh, 1)) Pick(CardId.MultiplyingKuriboh, CardId.MagiciansRod, CardId.DarkMagician);
+                else Pick(Bot.HasInHand(CardId.MagiciansRod) ? new[] { CardId.DarkMagician } : new[] { CardId.MagiciansRod, CardId.DarkMagician });
                 Pick(Bot.Hand.Where(c => !c.IsCode(CardId.MagiciansRod, CardId.DarkMagician)).OrderBy(c => Rank(ExpendablePriority, c)).ThenBy(CardValue));
                 return true;
             }

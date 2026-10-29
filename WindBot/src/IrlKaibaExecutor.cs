@@ -307,7 +307,8 @@ namespace WindBot.Game.AI.Decks
             var t = Bot.GetMonsters().Where(m => m.IsFaceup()).OrderByDescending(m => m.Attack).FirstOrDefault();
             if (t == null) return false;
             Pick(t);
-            Pick(CardId.BlueEyes);
+            // Blue-Eyes White Dragon from the Deck rather than the copy in hand
+            PickRanked(c => (c.IsCode(CardId.BlueEyes) ? 0 : 2) + (c.Location == CardLocation.Deck ? 0 : 1));
             return true;
         }
 
