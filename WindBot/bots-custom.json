@@ -3,36 +3,80 @@
         "name": "Slasher",
         "deck": "Slasher",
         "difficulty": 2,
-        "masterRules": [ 5 ]
+        "masterRules": [
+            5
+        ]
     },
     {
         "name": "IRL Chaos",
         "deck": "IRL_Chaos",
         "difficulty": 2,
-        "masterRules": [ 5 ]
+        "masterRules": [
+            5
+        ]
     },
     {
         "name": "IRL Frog",
         "deck": "IRL_Frog",
         "difficulty": 2,
-        "masterRules": [ 5 ]
+        "masterRules": [
+            5
+        ]
     },
     {
         "name": "IRL Dragon Ruler",
         "deck": "IRL_DragonRuler",
         "difficulty": 2,
-        "masterRules": [ 5 ]
+        "masterRules": [
+            5
+        ]
     },
     {
         "name": "IRL HERO",
         "deck": "IRL_Hero",
         "difficulty": 2,
-        "masterRules": [ 5 ]
+        "masterRules": [
+            5
+        ]
     },
     {
         "name": "IRL Cyber Dragon",
         "deck": "IRL_CyberDragon",
         "difficulty": 2,
-        "masterRules": [ 5 ]
+        "masterRules": [
+            5
+        ]
+    },
+    {
+        "name": "IRL Yugi",
+        "deck": "IRL_Yugi",
+        "difficulty": 2,
+        "masterRules": [
+            5
+        ]
+    },
+    {
+        "name": "IRL Kaiba",
+        "deck": "IRL_Kaiba",
+        "difficulty": 2,
+        "masterRules": [
+            5
+        ]
+    },
+    {
+        "name": "IRL Yubel",
+        "deck": "IRL_Yubel",
+        "difficulty": 2,
+        "masterRules": [
+            5
+        ]
+    },
+    {
+        "name": "IRL Exodia",
+        "deck": "IRL_Exodia",
+        "difficulty": 2,
+        "masterRules": [
+            5
+        ]
     }
 ]

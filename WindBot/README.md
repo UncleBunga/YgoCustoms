@@ -1,7 +1,8 @@
 # Custom WindBot decks
 
 AI opponents for the custom decks in this repo and for the owner's irl decks: **Slasher**, **IRL Chaos**, **IRL Frog**,
-**IRL Dragon Ruler**, **IRL HERO** and **IRL Cyber Dragon**.
+**IRL Dragon Ruler**, **IRL HERO**, **IRL Cyber Dragon**, **IRL Yugi**, **IRL Kaiba**, **IRL Yubel** and
+**IRL Exodia**.
 
 EDOPro's repo sync only brings cards, scripts and pictures, so the bot needs a one-time install on each device
 (and again after pulling a bot update or updating EDOPro, since EDOPro updates replace `WindBot/bots.json`).

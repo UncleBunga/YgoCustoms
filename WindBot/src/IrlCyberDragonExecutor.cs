@@ -62,6 +62,7 @@ namespace WindBot.Game.AI.Decks
             public const int Overdragon = 64599569;
             public const int CyberTwinDragon = 74157028;
             public const int CyberdarkDragon = 40418351;
+            public const int CyberdarkProtoDragon = 91900012; // custom (TMG)
             public const int Fortress = 79229522;
             public const int Rampage = 84058253;
             public const int Infinity = 10443957;
@@ -93,7 +94,7 @@ namespace WindBot.Game.AI.Decks
             AddExecutor(ExecutorType.Activate, CardId.CyberneticHorizon, HorizonEffect);
             AddExecutor(ExecutorType.Activate, CardId.CyberdarkRealm, () => { Pick(CardId.CyberdarkEdge, CardId.CyberdarkHorn, CardId.CyberdarkKeel); return true; });
             AddExecutor(ExecutorType.Activate, CardId.EvolutionEndBurst, () => !Bot.HasInHand(CardId.OverloadFusion));
-            AddExecutor(ExecutorType.Activate, CardId.CyberdarkChimera, () => { Pick(Bot.Hand.Where(c => !c.IsMonster()).OrderBy(CardValue)); return true; });
+            AddExecutor(ExecutorType.Activate, CardId.CyberdarkChimera, ChimeraEffect);
             AddExecutor(ExecutorType.Activate, CardId.CyberdarkClaw, () => { Pick(CardId.CyberdarkRealm, CardId.CyberdarkInferno, CardId.CyberdarkImpact); return true; });
             AddExecutor(ExecutorType.Activate, CardId.CyberdarkCannon, () => { Pick(CardId.CyberdarkEdge, CardId.CyberdarkHorn, CardId.CyberdarkKeel); return true; });
             AddStaples();
@@ -126,8 +127,9 @@ namespace WindBot.Game.AI.Decks
             AddExecutor(ExecutorType.Activate, CardId.CyberloadFusion, () => { Pick(CardId.CyberEndDragon, CardId.Rampage, CardId.CyberTwinDragon); return true; });
             AddExecutor(ExecutorType.Activate, CardId.OverloadFusion, OverloadFusionEffect);
             AddExecutor(ExecutorType.Activate, CardId.OverloadFutureFusion, OverloadFutureFusionEffect);
-            // 3000 LP with no once-per-turn: never through the generic rule (it paid 6000 LP on turn 1)
-            AddExecutor(ExecutorType.Activate, CardId.GaleDogra, () => false);
+            // Gale Dogra turbos out Cyberdark End Dragon: it pays 3000 LP to put the missing material (Cyber End Dragon or
+            // Cyberdark Dragon) in the GY when an Overload Fusion is ready to banish both.
+            AddExecutor(ExecutorType.Activate, CardId.GaleDogra, GaleDograEffect);
             AddExecutor(ExecutorType.Activate, CardId.FutureFusion, () => { Pick(CardId.CyberEndDragon); return true; });
             AddExecutor(ExecutorType.SpSummon, CardId.Nova, NovaSummon);
             AddExecutor(ExecutorType.SpSummon, CardId.Infinity, () => Bot.HasInMonstersZone(CardId.Nova));
@@ -135,7 +137,9 @@ namespace WindBot.Game.AI.Decks
             AddExecutor(ExecutorType.SpSummon, CardId.Sieger, () => Bot.GetMonsters().Count(m => m.IsFaceup() && m.HasRace(CardRace.Machine)) >= 2
                 && !Bot.HasInExtra(CardId.Nova) || Bot.GetMonsters().Count(m => m.Level == 5) < 2);
             AddExecutor(ExecutorType.Activate, CardId.Rampage, () => { Pick(Enemy.GetSpells()); return true; });
+            AddExecutor(ExecutorType.SpSummon, CardId.CyberdarkEndDragon, CyberdarkEndTributeSummon);
             AddExecutor(ExecutorType.Activate, CardId.CyberdarkEndDragon, TargetEnemyGraveMonster);
+            AddExecutor(ExecutorType.Activate, CardId.CyberdarkProtoDragon, ProtoDragonEffect);
             AddExecutor(ExecutorType.Activate, CardId.CyberdarkDragon, () => { Pick(Bot.Graveyard.Where(c => c.HasRace(CardRace.Dragon)).OrderByDescending(c => c.Attack)); return true; });
 
             // Cyberdark beaters
@@ -164,7 +168,7 @@ namespace WindBot.Game.AI.Decks
             CardId.MachineDuplication, CardId.CyberneticOverflow, CardId.CyberdarkEdge, CardId.CyberdarkRealm
         };
         protected override int[] SpSummonPriority => new[] {
-            CardId.CyberEndDragon, CardId.CyberdarkEndDragon, CardId.Rampage, CardId.CyberTwinDragon, CardId.CyberdarkDragon,
+            CardId.CyberdarkEndDragon, CardId.CyberEndDragon, CardId.CyberdarkProtoDragon, CardId.Rampage, CardId.CyberTwinDragon, CardId.CyberdarkDragon,
             CardId.CyberDragon, CardId.Nachster, CardId.Vier, CardId.Herz, CardId.Core
         };
         protected override int[] ExpendablePriority => new[] {
@@ -173,9 +177,12 @@ namespace WindBot.Game.AI.Decks
         };
 
         bool summonedThisTurn;
+        bool chimeraFusionFromGY;
         public override void OnNewTurn()
         {
             summonedThisTurn = false;
+            chimeraFusionFromGY = false;
+            protoEquippedThisTurn = false;
             base.OnNewTurn();
         }
 
@@ -199,6 +206,16 @@ namespace WindBot.Game.AI.Decks
             if (!summonedThisTurn && !Bot.HasInHand(CardId.Core)) Pick(CardId.Core, CardId.Nachster, CardId.CyberDragon);
             else if (EnemyHasMonster && Bot.GetMonsterCount() == 0 && !Bot.HasInHand(CardId.CyberDragon)) Pick(CardId.CyberDragon, CardId.Jormungardr, CardId.Nachster);
             else Pick(CardId.Nachster, CardId.Jormungardr, CardId.CyberDragon, CardId.Herz);
+            return true;
+        }
+
+        bool ChimeraEffect()
+        {
+            if (Card.Location == CardLocation.Grave) { Pick(CardId.CyberdarkEdge, CardId.CyberdarkHorn, CardId.CyberdarkKeel); return true; }
+            var discard = Bot.Hand.Where(c => !c.IsMonster() && !c.IsCode(CardId.PowerBond, CardId.OverloadFusion)).OrderBy(CardValue).FirstOrDefault();
+            if (discard == null) return false;
+            Pick(discard);
+            chimeraFusionFromGY = true;
             return true;
         }
 
@@ -359,6 +376,12 @@ namespace WindBot.Game.AI.Decks
         {
             // Power Bond doubles ATK and burns us at End Phase: use it to win, or when we can afford the damage
             if (!MyTurn || Duel.Phase != DuelPhase.Main1) return false;
+            if (chimeraFusionFromGY && CyberdarkEndReady)
+            {
+                // Chimera lets this Fusion banish materials from the GY: Cyberdark End Dragon at double ATK
+                Pick(CardId.CyberdarkEndDragon);
+                return true;
+            }
             int n = CyberDragonsForFusion;
             if (n >= 3)
             {
@@ -382,6 +405,7 @@ namespace WindBot.Game.AI.Decks
             if (!MyTurn) return false;
             int n = CyberDragonsForFusion;
             if (n >= 3) { Pick(CardId.CyberEndDragon); AI.SelectMaterials(FusionMaterialsFor(3)); return true; }
+            if (ProtoFusionPossible) { Pick(CardId.CyberdarkProtoDragon); return true; }
             if (n >= 2)
             {
                 if (Enemy.GetSpellCount() >= 2) Pick(CardId.Rampage, CardId.CyberTwinDragon);
@@ -392,13 +416,90 @@ namespace WindBot.Game.AI.Decks
             return false;
         }
 
+        bool IsCyberdark(ClientCard c) => c.IsCode(CardId.CyberdarkHorn, CardId.CyberdarkEdge, CardId.CyberdarkKeel, CardId.CyberdarkWurm,
+            CardId.CyberdarkChimera, CardId.CyberdarkCannon, CardId.CyberdarkClaw);
+
+        bool ProtoFusionPossible => Bot.HasInExtra(CardId.CyberdarkProtoDragon) && !Bot.HasInMonstersZone(CardId.CyberdarkProtoDragon)
+            && (Bot.Hand.Any(IsCyberDragon) || CyberDragonsOnField > 0)
+            && (Bot.Hand.Any(IsCyberdark) || Bot.GetMonsters().Any(m => m.IsFaceup() && IsCyberdark(m)));
+
+        bool protoEquippedThisTurn;
+        bool ProtoCanEquip => !protoEquippedThisTurn && Bot.GetMonsters().Any(m => m.IsFaceup() && m.IsCode(CardId.CyberdarkProtoDragon));
+
+        // Cyberdark Proto Dragon (custom): equip from either GY (Cyber End Dragon first, for Cyberdark End), and negate
+        // monster effects by sending an equip.
+        bool ProtoDragonEffect()
+        {
+            if (Duel.CurrentChain.Count > 0) return Duel.LastChainPlayer == 1;
+            if (!MyTurn) return false;
+            var cyberEnd = Bot.Graveyard.FirstOrDefault(c => c.IsCode(CardId.CyberEndDragon));
+            if (cyberEnd != null && Bot.HasInExtra(CardId.CyberdarkEndDragon)) Pick(cyberEnd);
+            else
+            {
+                var t = Enemy.Graveyard.Concat(Bot.Graveyard).Where(c => c.IsMonster()).OrderByDescending(c => c.Attack).FirstOrDefault();
+                if (t == null) return false;
+                Pick(t);
+            }
+            protoEquippedThisTurn = true;
+            return true;
+        }
+
+        bool CyberdarkEndTributeSummon()
+        {
+            // tribute a Cyberdark Fusion (Proto / Cyberdark Dragon) that is equipped with Cyber End Dragon
+            var host = Bot.GetMonsters().FirstOrDefault(m => m.IsFaceup() && m.IsCode(CardId.CyberdarkProtoDragon, CardId.CyberdarkDragon)
+                && m.EquipCards.Any(e => e.IsCode(CardId.CyberEndDragon)));
+            if (host == null) return false;
+            Pick(host);
+            return true;
+        }
+
+        bool CyberdarkEndReady => Bot.HasInExtra(CardId.CyberdarkEndDragon)
+            && Bot.Graveyard.Any(c => c.IsCode(CardId.CyberEndDragon)) && Bot.Graveyard.Any(c => c.IsCode(CardId.CyberdarkDragon));
+
+        bool OverloadReady => Bot.HasInHand(CardId.OverloadFusion) || Bot.HasInHand(CardId.EvolutionEndBurst)
+            || Bot.HasInGraveyard(CardId.OverloadFutureFusion)
+            || (Bot.HasInHand(CardId.PowerBond) && chimeraFusionFromGY);
+
+        bool GaleDograEffect()
+        {
+            if (!MyTurn || Bot.LifePoints < 4500 || !Bot.HasInExtra(CardId.CyberdarkEndDragon)) return false;
+            // Proto Dragon on the field equips Cyber End Dragon from the GY, then tributes into Cyberdark End Dragon
+            if (ProtoCanEquip && !Bot.Graveyard.Any(c => c.IsCode(CardId.CyberEndDragon))) { Pick(CardId.CyberEndDragon); return true; }
+            if (!OverloadReady) return false;
+            bool end = Bot.Graveyard.Any(c => c.IsCode(CardId.CyberEndDragon));
+            bool dark = Bot.Graveyard.Any(c => c.IsCode(CardId.CyberdarkDragon));
+            if (end == dark) return false; // only when one payment completes the pair
+            Pick(end ? CardId.CyberdarkDragon : CardId.CyberEndDragon);
+            return true;
+        }
+
         bool OverloadFusionEffect()
         {
             if (!MyTurn) return false;
+            if (CyberdarkEndReady)
+            {
+                Pick(CardId.CyberdarkEndDragon);
+                var pair = new[] { Bot.Graveyard.First(c => c.IsCode(CardId.CyberdarkDragon)), Bot.Graveyard.First(c => c.IsCode(CardId.CyberEndDragon)) };
+                AI.SelectMaterials(pair);
+                Pick(pair);
+                return true;
+            }
             int machinesInGY = Bot.Graveyard.Count(c => c.HasRace(CardRace.Machine) && c.IsMonster());
             bool cyberdarkSet = new[] { CardId.CyberdarkHorn, CardId.CyberdarkEdge, CardId.CyberdarkKeel }
                 .All(id => Bot.Graveyard.Any(c => c.IsCode(id)) || Bot.GetMonsters().Any(c => c.IsCode(id)));
             if (cyberdarkSet) { Pick(CardId.CyberdarkDragon); return true; }
+            var cyberGY = Bot.Graveyard.FirstOrDefault(IsCyberDragon);
+            var darkGY = Bot.Graveyard.FirstOrDefault(c => c.IsMonster() && IsCyberdark(c));
+            bool overdragonLethal = Bot.Graveyard.Count(c => c.IsMonster() && c.HasRace(CardRace.Machine)) * 800 >= EnemyLP && Bot.Graveyard.Any(IsCyberDragon);
+            if (!overdragonLethal && cyberGY != null && darkGY != null && Bot.HasInExtra(CardId.CyberdarkProtoDragon)
+                && !Bot.HasInMonstersZone(CardId.CyberdarkProtoDragon))
+            {
+                Pick(CardId.CyberdarkProtoDragon);
+                AI.SelectMaterials(new[] { cyberGY, darkGY });
+                Pick(new[] { cyberGY, darkGY });
+                return true;
+            }
             // Overdragon: every Machine in the GY as material (800 ATK and one attack each). It sends the rest of our
             // field to the GY, so only when it beats what we already have.
             var mats = Bot.Graveyard.Where(c => c.IsMonster() && c.HasRace(CardRace.Machine)).ToList();

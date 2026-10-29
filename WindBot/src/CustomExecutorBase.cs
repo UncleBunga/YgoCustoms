@@ -143,6 +143,8 @@ namespace WindBot.Game.AI.Decks
         public override IList<ClientCard> OnSelectCard(IList<ClientCard> cards, int min, int max, long hint, bool cancelable)
         {
             if (cards.Count == 0) return null;
+            // optional tributes (e.g. "can be Normal Summoned without Tributing"): tribute nothing
+            if (min == 0 && hint == HintMsg.Release) return new List<ClientCard>();
             if (hint == HintMsg.FusionMaterial || hint == HintMsg.SynchroMaterial || hint == HintMsg.XyzMaterial
                 || hint == HintMsg.LinkMaterial)
                 return null;
@@ -153,6 +155,8 @@ namespace WindBot.Game.AI.Decks
                 picks.RemoveAt(0);
                 chosen = pick(cards).Take(System.Math.Max(max, 1)).ToList();
                 if (chosen.Count >= min && chosen.Count > 0) return chosen;
+                // an empty pick on an optional prompt ends a one-at-a-time selection (SelectUnselect "finish")
+                if (min == 0) return chosen;
             }
             IEnumerable<ClientCard> ordered;
             bool enemyFirst = hint == HintMsg.Destroy || hint == HintMsg.Remove || hint == HintMsg.Control

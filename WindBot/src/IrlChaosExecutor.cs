@@ -290,8 +290,12 @@ namespace WindBot.Game.AI.Decks
         bool WitnessEffect()
         {
             if (Card.Location == CardLocation.Hand) return true;
-            // place up to 3 Synchros: the Angelechy trio, whose placement effects search the Angelechy Spell/Trap
-            Pick(CardId.Destrier, CardId.Bastion, CardId.Shatranga, CardId.Castellan);
+            // place exactly 2 (Destrier: Angelechy Spell, Bastion: places Shatranga as the third) so the Arc Token is Level 2
+            // and Witness (Level 8 Tuner) + the token make Angelechy Seneschal, which brings Enlisted for Chaos Angel
+            // (the placement is chosen one card at a time, then finished)
+            Pick(CardId.Destrier);
+            Pick(CardId.Bastion);
+            Pick(new int[0]);
             return true;
         }
 
@@ -336,8 +340,8 @@ namespace WindBot.Game.AI.Decks
 
         bool YataSummon()
         {
-            // keep the lock: Yata only when it can hit them
-            if (Enemy.GetMonsterCount() > 0) return false;
+            // keep the lock: Yata only when it can hit them (never on the first turn, it would just return to the hand)
+            if (Enemy.GetMonsterCount() > 0 || Duel.Turn == 1) return false;
             return NormalSummon();
         }
 
