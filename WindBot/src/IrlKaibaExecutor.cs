@@ -1,9 +1,14 @@
+using System.Collections.Generic;
 using System.Linq;
 using YGOSharp.OCGWrapper.Enums;
 
 namespace WindBot.Game.AI.Decks
 {
-    // IRL Kaiba: Blue-Eyes extenders, with the XYZ Union engine there only to turbo Obelisk (the user's replay line):
+    // IRL Kaiba: a newer Blue-Eyes deck (it should only lose to unlucky XYZ Union / Kaiba-flavor draws). The Blue-Eyes core
+    // is ported from IceYGO WindBot's official Blue-Eyes executor (MIT, (c) IceYGO): Alternative White Dragon destroys
+    // and then becomes Synchro material, Spirit Dragon / Azure-Eyes come after attacks unless Alternative used its effect,
+    // Spirit Dragon becomes Azure-Eyes on their turn, and Dragon Spirit of White / White Stone of Ancients timing.
+    // Blue-Eyes extenders, with the XYZ Union engine there only to turbo Obelisk (the user's replay line):
     //   Union Hangar (Y-Dragon Head) > Dictator of D. > Y-Dragon Head (Hangar equips Z-Metal Tank) > Spirit with Eyes of
     //   Blue (Mausoleum) > Union Carrier > Union Controller (Union Activation) > Union Activation sends X-Head Cannon for
     //   X-Cross Cannon > X-Cross equips Z-Zillion Tank > XYZ-Hyper Dragon Cannon.
@@ -94,7 +99,9 @@ namespace WindBot.Game.AI.Decks
             AddExecutor(ExecutorType.Activate, CardId.MaidenWithEyesOfBlue, () => { Pick(CardId.BlueEyes); return true; });
             AddExecutor(ExecutorType.Activate, CardId.MysticalElf, () => Duel.LastChainPlayer == 1 || Card.Location != CardLocation.Hand);
             AddExecutor(ExecutorType.Activate, CardId.UltimateSpirit, () => Duel.LastChainPlayer == 1 || Card.Location != CardLocation.MonsterZone);
-            AddExecutor(ExecutorType.Activate, CardId.SpiritDragon, () => Duel.LastChainPlayer == 1 || Card.Location != CardLocation.MonsterZone);
+            AddExecutor(ExecutorType.Activate, CardId.SpiritDragon, SpiritDragonEffect);
+            AddExecutor(ExecutorType.Activate, CardId.Azure, AzureEffect);
+            AddExecutor(ExecutorType.Activate, CardId.DragonSpiritOfWhite, DragonSpiritOfWhiteEffect);
             AddExecutor(ExecutorType.Activate, CardId.JetDragon, JetDragonEffect);
             AddExecutor(ExecutorType.Activate, CardId.XYZDragonCannon, () => TargetEnemyCard() && Bot.Hand.Count > 0);
             AddStaples();
@@ -132,15 +139,17 @@ namespace WindBot.Game.AI.Decks
             AddExecutor(ExecutorType.Activate, CardId.Melody, MelodyEffect);
             AddExecutor(ExecutorType.Activate, CardId.Wishes, WishesEffect);
             AddExecutor(ExecutorType.Activate, CardId.Bingo, () => { Pick(CardId.BlueEyes, CardId.Alternative, CardId.TrueLight, CardId.Roar); return true; });
-            AddExecutor(ExecutorType.Activate, CardId.TradeIn, () => DiscardLevel8());
+            AddExecutor(ExecutorType.Activate, CardId.TradeIn, TradeInEffect);
             AddExecutor(ExecutorType.SpSummon, CardId.Alternative);
-            AddExecutor(ExecutorType.Activate, CardId.Alternative, () => TargetEnemyMonster());
-            AddExecutor(ExecutorType.Summon, CardId.Sage, () => true);
+            AddExecutor(ExecutorType.Activate, CardId.Alternative, AlternativeEffect);
+            AddExecutor(ExecutorType.Summon, CardId.Sage, () => !Bot.HasInHand(CardId.WhiteStoneOfAncients) && !Bot.HasInHand(CardId.WhiteStoneOfLegend));
+            AddExecutor(ExecutorType.Summon, CardId.WhiteStoneOfAncients, WhiteStoneSummon);
+            AddExecutor(ExecutorType.Summon, CardId.WhiteStoneOfLegend, WhiteStoneSummon);
             AddExecutor(ExecutorType.Activate, CardId.Sage, SageEffect);
             AddExecutor(ExecutorType.Summon, CardId.Protector, () => true);
             AddExecutor(ExecutorType.Activate, CardId.Protector, SageEffect);
             AddExecutor(ExecutorType.Activate, CardId.Master, SageEffect);
-            AddExecutor(ExecutorType.Activate, CardId.WhiteStoneOfAncients, () => { Pick(CardId.BlueEyes, CardId.JetDragon, CardId.AbyssDragon); return true; });
+            AddExecutor(ExecutorType.Activate, CardId.WhiteStoneOfAncients, WhiteStoneOfAncientsEffect);
             AddExecutor(ExecutorType.Activate, CardId.AbyssDragon, () => { Pick(CardId.ChaosForm, CardId.UltimateFusion); Pick(CardId.BlueEyes, CardId.Alternative, CardId.Obelisk); return true; });
             AddExecutor(ExecutorType.Activate, CardId.TrueLight, TrueLightEffect);
             AddExecutor(ExecutorType.Activate, CardId.Roar, () => { Pick(CardId.BlueEyes, CardId.JetDragon, CardId.AbyssDragon); return true; });
@@ -151,9 +160,9 @@ namespace WindBot.Game.AI.Decks
             AddExecutor(ExecutorType.Activate, CardId.DestinedRivals, () => Duel.LastChainPlayer == 1 || Enemy.GetMonsters().Count(m => m.IsFaceup() && m.HasType(CardType.Effect)) >= 2);
             AddExecutor(ExecutorType.Activate, CardId.UltimateFusion, () => { Pick(CardId.NeoUltimateDragon, CardId.UltimateDragon, CardId.TwinBurst, CardId.TyrantDragon); return true; });
             AddExecutor(ExecutorType.SpSummon, CardId.TwinBurst, () => Bot.GetMonsters().Count(m => m.IsCode(CardId.BlueEyes)) >= 2 && !Bot.HasInHand(CardId.UltimateFusion));
-            AddExecutor(ExecutorType.SpSummon, CardId.UltimateSpirit);
-            AddExecutor(ExecutorType.SpSummon, CardId.SpiritDragon);
-            AddExecutor(ExecutorType.SpSummon, CardId.Azure);
+            AddExecutor(ExecutorType.SpSummon, CardId.UltimateSpirit, SynchroAfterAttacks);
+            AddExecutor(ExecutorType.SpSummon, CardId.SpiritDragon, SynchroAfterAttacks);
+            AddExecutor(ExecutorType.SpSummon, CardId.Azure, SynchroAfterAttacks);
             // Indigo-Eyes breaks full boards: its Xyz Summon negates every face-up card they control
             AddExecutor(ExecutorType.SpSummon, CardId.Indigo, () => Enemy.GetMonsters().Count(m => m.IsFaceup()) + Enemy.GetSpells().Count(c => c.IsFaceup()) >= 3
                 || Bot.GetMonsters().Count(m => m.Level == 8 && m.IsFaceup()) >= 2 && !Bot.HasInExtra(CardId.SpiritDragon));
@@ -163,14 +172,21 @@ namespace WindBot.Game.AI.Decks
             AddExecutor(ExecutorType.SpSummon, CardId.KaiserVorseRaider);
 
             AddExecutor(ExecutorType.Summon, CardId.Obelisk, () => true);
+            // Tribute Summon Blue-Eyes off spare bodies (Union pieces, Peten, Dictator...)
+            AddExecutor(ExecutorType.Summon, CardId.BlueEyes, () => Bot.GetMonsters().Count(m => m.Attack < 2000 && !m.IsCode(CardId.SpiritWithEyesOfBlue)) >= 2);
             // no starter: Peten (Level 3 Spellcaster) links into Spirit with Eyes of Blue > Mausoleum > Blue-Eyes
             AddExecutor(ExecutorType.Summon, CardId.Peten, () => Bot.HasInExtra(CardId.SpiritWithEyesOfBlue));
             AddExecutor(ExecutorType.Summon, CardId.MaidenOfWhite, () => !TrueLightUp);
             AddExecutor(ExecutorType.Activate, CardId.MaidenOfWhite, MaidenOfWhiteEffect);
             AddExecutor(ExecutorType.Summon, CardId.Master, () => Bot.Graveyard.Any(c => c.IsCode(Tuners)));
+            // a White Stone out for Sage's hand effect; set the Stones last
+            AddExecutor(ExecutorType.Summon, CardId.WhiteStoneOfLegend, () => Bot.HasInHand(CardId.Sage));
+            AddExecutor(ExecutorType.Summon, CardId.WhiteStoneOfAncients, () => Bot.HasInHand(CardId.Sage));
             AddExecutor(ExecutorType.SummonOrSet, () => BestFallbackSummon());
+            AddExecutor(ExecutorType.MonsterSet, CardId.WhiteStoneOfLegend);
+            AddExecutor(ExecutorType.MonsterSet, CardId.WhiteStoneOfAncients);
             AddExecutor(ExecutorType.SpellSet, SetTrapOrQuickPlay);
-            AddExecutor(ExecutorType.Repos, DefaultMonsterRepos);
+            AddExecutor(ExecutorType.Repos, BlueEyesRepos);
             AddExecutor(ExecutorType.Activate, GenericActivate);
         }
 
@@ -245,6 +261,10 @@ namespace WindBot.Game.AI.Decks
             // our turn: split into X / Y / Z to wake Union Activation for Obelisk
             if (!Bot.HasInGraveyard(CardId.UnionActivation) || HasObelisk) return false;
             if (!MaybeInDeck(CardId.Obelisk, 1) && !Bot.HasInGraveyard(CardId.Obelisk)) return false;
+            // all three of X-Head / Y-Dragon / Z-Metal must come back at once, or Union Activation stays asleep
+            bool Back(int id) => Bot.Graveyard.Any(c => c.IsCode(id)) || Bot.Banished.Any(c => c.IsCode(id));
+            if (!Back(CardId.XHeadCannon) || !Back(CardId.YDragonHead) || !Back(CardId.ZMetalTank)) return false;
+            if (Bot.GetMonsterCount() > 2) return false;
             Pick(CardId.XYZDragonCannon);
             return true;
         }
@@ -286,6 +306,142 @@ namespace WindBot.Game.AI.Decks
             return true;
         }
 
+        // ---------- Blue-Eyes core (ported from the official Blue-Eyes executor) ----------
+
+        readonly List<ClientCard> usedAlternative = new List<ClientCard>();
+
+        public override void OnNewTurn()
+        {
+            usedAlternative.Clear();
+            base.OnNewTurn();
+        }
+
+        int CountInHand(int id) => Bot.Hand.Count(c => c.IsCode(id));
+
+        bool AlternativeEffect()
+        {
+            // destroy; this Alternative (it can't attack now) then becomes Synchro / Xyz material
+            var target = Util.GetProblematicEnemyMonster(Card.GetDefensePower());
+            if (target == null && Util.GetBotAvailZonesFromExtraDeck(Card) > 0
+                && (Bot.GetMonsters().Any(m => m.IsCode(CardId.Sage, CardId.WhiteStoneOfAncients, CardId.WhiteStoneOfLegend, CardId.BlueEyes, CardId.DragonSpiritOfWhite, CardId.MaidenWithEyesOfBlue))
+                    || Bot.GetMonsters().Count(m => m.IsCode(CardId.Alternative)) >= 2))
+                target = Util.GetBestEnemyMonster(false, true);
+            if (target == null) return false;
+            Pick(target);
+            usedAlternative.Add(Card);
+            return true;
+        }
+
+        public override IList<ClientCard> OnSelectSynchroMaterial(IList<ClientCard> cards, int sum, int min, int max)
+        {
+            // the Alternative that already used its effect goes first
+            var used = usedAlternative.FirstOrDefault(cards.Contains);
+            if (used != null && min <= 1)
+            {
+                usedAlternative.Remove(used);
+                return new List<ClientCard> { used };
+            }
+            return base.OnSelectSynchroMaterial(cards, sum, min, max);
+        }
+
+        public override IList<ClientCard> OnSelectXyzMaterial(IList<ClientCard> cards, int min, int max)
+        {
+            var result = Util.SelectPreferredCards(usedAlternative, cards, min, max);
+            foreach (var c in result) usedAlternative.Remove(c);
+            return Util.CheckSelectCount(result, cards, min, max);
+        }
+
+        bool SynchroAfterAttacks()
+        {
+            // Main Phase 1 only once an Alternative spent itself (or on the first turn); otherwise after attacking, in Defense
+            if (Duel.Phase == DuelPhase.Main1)
+            {
+                if (usedAlternative.Count > 0) return true;
+                if (Duel.Turn == 1) { AI.SelectPosition(CardPosition.FaceUpDefence); return true; }
+                return false;
+            }
+            if (Duel.Phase == DuelPhase.Main2) { AI.SelectPosition(CardPosition.FaceUpDefence); return true; }
+            return false;
+        }
+
+        bool SpiritDragonEffect()
+        {
+            if (Card.Location != CardLocation.MonsterZone) return true;
+            if (ActivateDescription == -1 || Desc(CardId.SpiritDragon, 0)) return Duel.LastChainPlayer == 1; // negate a GY effect
+            // tribute into Azure-Eyes on their turn, or when targeted
+            if (!MyTurn && (Duel.Phase == DuelPhase.BattleStart || Duel.Phase == DuelPhase.End) || Util.IsChainTarget(Card))
+            {
+                Pick(CardId.Azure);
+                return true;
+            }
+            return false;
+        }
+
+        bool AzureEffect()
+        {
+            // Standby Phase: revive a Normal Monster
+            Pick(Enemy.GetSpellCount() > 0 ? new[] { CardId.DragonSpiritOfWhite, CardId.BlueEyes } : new[] { CardId.BlueEyes, CardId.DragonSpiritOfWhite });
+            return true;
+        }
+
+        bool HaveEnoughWhiteDragon => CountInHand(CardId.BlueEyes) >= 2 || Bot.HasInGraveyard(CardId.BlueEyes) && Bot.HasInGraveyard(CardId.WhiteStoneOfAncients);
+
+        bool DragonSpiritOfWhiteEffect()
+        {
+            if (ActivateDescription == -1 || GenericTrigger)
+            {
+                var t = Util.GetBestEnemySpell();
+                if (t == null) return false;
+                Pick(t);
+                return true;
+            }
+            if (!HaveEnoughWhiteDragon) return false;
+            if (MyTurn && Duel.Phase == DuelPhase.BattleStart) return Card.Attacked;
+            if (!MyTurn && Duel.Phase == DuelPhase.End)
+                return Bot.HasInMonstersZone(CardId.Azure, true) && !Bot.HasInGraveyard(CardId.DragonSpiritOfWhite) && !Bot.HasInGraveyard(CardId.BlueEyes);
+            return Util.IsChainTarget(Card);
+        }
+
+        bool WhiteStoneOfAncientsEffect()
+        {
+            if (Desc(CardId.WhiteStoneOfAncients, 0))
+            {
+                // banish from the GY: add a Blue-Eyes from the GY
+                if (Bot.HasInHand(CardId.TradeIn) && !Bot.HasInHand(CardId.BlueEyes) && !Bot.HasInHand(CardId.Alternative)) { Pick(CardId.BlueEyes); return true; }
+                if (Bot.HasInHand(CardId.BlueEyes) && !Bot.HasInHand(CardId.Alternative) && Bot.HasInGraveyard(CardId.Alternative)) { Pick(CardId.Alternative); return true; }
+                if (Bot.HasInHand(CardId.Alternative) && !Bot.HasInHand(CardId.BlueEyes) && Bot.HasInGraveyard(CardId.BlueEyes)) { Pick(CardId.BlueEyes); return true; }
+                return false;
+            }
+            // End Phase: a Blue-Eyes from the Deck (Dragon Spirit when they have backrow)
+            Pick(Enemy.GetSpellCount() > 0 ? new[] { CardId.DragonSpiritOfWhite, CardId.BlueEyes, CardId.JetDragon } : new[] { CardId.BlueEyes, CardId.JetDragon, CardId.DragonSpiritOfWhite });
+            return true;
+        }
+
+        bool TradeInEffect()
+        {
+            if (Bot.HasInHand(CardId.DragonSpiritOfWhite)) { Pick(CardId.DragonSpiritOfWhite); return true; }
+            if (CountInHand(CardId.BlueEyes) >= 2) { Pick(CardId.BlueEyes); return true; }
+            if (CountInHand(CardId.Alternative) >= 2) { Pick(CardId.Alternative); return true; }
+            if (!Bot.HasInHand(CardId.BlueEyes) || !Bot.HasInHand(CardId.Alternative)) return DiscardLevel8();
+            return false;
+        }
+
+        bool WhiteStoneSummon()
+        {
+            return Bot.GetMonsters().Any(m => m.IsCode(CardId.Sage, CardId.WhiteStoneOfAncients, CardId.WhiteStoneOfLegend, CardId.Alternative, CardId.BlueEyes, CardId.DragonSpiritOfWhite));
+        }
+
+        bool BlueEyesRepos()
+        {
+            bool enemyBetter = Util.IsAllEnemyBetter(true);
+            if (Card.IsAttack() && enemyBetter) return true;
+            if (Card.IsFacedown()) return true;
+            if (Card.IsDefense() && !enemyBetter && Card.Attack >= Card.Defense) return true;
+            if (Card.IsDefense() && Card.IsCode(CardId.SpiritDragon, CardId.Azure)) return true;
+            if (Card.IsAttack() && Card.IsCode(CardId.Sage, CardId.WhiteStoneOfAncients, CardId.WhiteStoneOfLegend)) return true;
+            return false;
+        }
+
         // ---------- Blue-Eyes ----------
 
         // True Light is the goal: Maiden of White places it, it revives / protects Blue-Eyes and Sets their Spells/Traps
@@ -322,11 +478,13 @@ namespace WindBot.Game.AI.Decks
 
         bool MelodyEffect()
         {
-            var discard = Bot.Hand.Where(c => c != Card).OrderBy(c => c.IsCode(CardId.WhiteStoneOfLegend, CardId.WhiteStoneOfAncients) ? 0 : 1)
+            var discard = Bot.Hand.Where(c => c != Card).OrderBy(c => c.IsCode(CardId.WhiteStoneOfAncients) ? 0 : c.IsCode(CardId.DragonSpiritOfWhite) ? 1
+                    : c.IsCode(CardId.WhiteStoneOfLegend) ? 2 : c.IsCode(CardId.TradeIn) ? 3 : c.IsCode(CardId.Sage) ? 4 : 5)
                 .ThenBy(c => Rank(ExpendablePriority, c)).ThenBy(CardValue).FirstOrDefault();
             if (discard == null) return false;
             Pick(discard);
-            Pick(CardId.BlueEyes, CardId.Alternative, CardId.JetDragon);
+            // up to 2: Blue-Eyes White Dragon (if none in hand) + Alternative
+            Pick(Bot.HasInHand(CardId.BlueEyes) ? new[] { CardId.Alternative, CardId.JetDragon } : new[] { CardId.BlueEyes, CardId.Alternative });
             return true;
         }
 
@@ -348,6 +506,15 @@ namespace WindBot.Game.AI.Decks
             {
                 if (!TrueLightUp && MaybeInDeck(CardId.MaidenOfWhite, 1)) Pick(CardId.MaidenOfWhite, CardId.MaidenWithEyesOfBlue, CardId.WhiteStoneOfLegend);
                 else Pick(CardId.MaidenWithEyesOfBlue, CardId.WhiteStoneOfLegend, CardId.WhiteStoneOfAncients, CardId.Protector);
+                return true;
+            }
+            // hand: discard Sage, send a White Stone we control for a Blue-Eyes from hand (Dragon Spirit vs backrow)
+            if (Card.Location == CardLocation.Hand && Card.IsCode(CardId.Sage))
+            {
+                var stone = Bot.GetMonsters().FirstOrDefault(m => m.IsFaceup() && m.IsCode(CardId.WhiteStoneOfLegend, CardId.WhiteStoneOfAncients));
+                if (stone == null || Bot.GetMonsters().Any(m => m.IsCode(CardId.Alternative, CardId.BlueEyes, CardId.DragonSpiritOfWhite))) return false;
+                Pick(stone);
+                Pick(Enemy.GetSpellCount() > 0 ? new[] { CardId.DragonSpiritOfWhite, CardId.BlueEyes } : new[] { CardId.BlueEyes, CardId.DragonSpiritOfWhite });
                 return true;
             }
             // send an Effect Monster we control to the GY for a Blue-Eyes from hand
