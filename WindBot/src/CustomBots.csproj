@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    WindBot executors for custom decks. Builds CustomBots.dll, which WindBot loads from <EDOPro>/WindBot/Executors
+    on Windows (WindBot.exe) and on Android (libWindbot). Only ExecutorBase may be referenced: the Android build has
+    no WindBot.exe, so anything from WindBot itself would fail to load there.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net40</TargetFramework>
+    <OutputType>Library</OutputType>
+    <AssemblyName>CustomBots</AssemblyName>
+    <RootNamespace>WindBot.Game.AI.Decks</RootNamespace>
+    <LangVersion>7.3</LangVersion>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="ExecutorBase">
+      <HintPath>D:\Games\ProjectIgnis\WindBot\ExecutorBase.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>
