@@ -19,12 +19,18 @@ If the repo is cloned inside EDOPro (`<EDOPro>/repositories/<name>`), `-EdoPath`
 
 ## Android
 
-Inside the EDOPro folder on the device (the one containing `deck`, `repositories` and `WindBot`):
+EDOPro only lists bots that are in `WindBot/bots.json` (decks sitting in the folder are not enough). This folder is a
+complete drop-in: `bots.json` lists every official bot plus the custom ones, and `Decks/` and `Dialogs/` hold all of
+their files.
 
-1. Copy `WindBot/Executors/CustomBots.dll` from this repo to `EDOPro/WindBot/Executors/` (create the folder if needed).
-2. Copy every `.ydk` in `WindBot/Decks/` to `EDOPro/WindBot/Decks/`.
-3. Open `EDOPro/WindBot/bots.json` and add the entries from `bots-custom.json` inside the outer `[ ]`
-   (put a comma after the previous entry).
+Inside the EDOPro folder on the device (the one containing `deck`, `repositories` and `WindBot`), copy these from this
+repo's `WindBot` folder into `EDOPro/WindBot/`, overwriting:
+
+1. `bots.json`
+2. `Executors/CustomBots.dll` (create the `Executors` folder if needed)
+3. everything in `Decks/` and `Dialogs/`
+
+Restart EDOPro afterwards. Redo this after pulling a bot update or updating EDOPro (updates replace `bots.json`).
 
 ## Using it
 
