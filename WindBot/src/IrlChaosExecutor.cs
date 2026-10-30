@@ -88,7 +88,13 @@ namespace WindBot.Game.AI.Decks
             AddExecutor(ExecutorType.Activate, CardId.DisPater, DisPaterEffect);
             AddExecutor(ExecutorType.Activate, CardId.Magnamhut, MagnamhutEffect);
             AddExecutor(ExecutorType.Activate, CardId.KewlTune, () => Duel.LastChainPlayer == 1);
-            AddExecutor(ExecutorType.Activate, CardId.Dragondark, () => Card.Location != CardLocation.Hand || !MyTurn);
+            // Thunder Dragons (as the official Thunder Dragon bot plays them): banished or sent to the GY they fetch the next
+            // piece; Dragondark discards itself for another Dragondark on their turn
+            AddExecutor(ExecutorType.Activate, CardId.Dragondark, DragondarkEffect);
+            AddExecutor(ExecutorType.Activate, CardId.Dragonroar, () => Card.Location == CardLocation.Hand
+                ? PickThen(CardId.Dragonhawk, CardId.Dragondark) : PickThen(CardId.Dragondark, CardId.Dragonhawk));
+            AddExecutor(ExecutorType.Activate, CardId.Dragonhawk, () => Card.Location == CardLocation.Hand
+                ? PickThen(CardId.Dragonroar, CardId.Dragondark) : true);
             AddExecutor(ExecutorType.Activate, CardId.AngelechyDisturbance, DisturbanceEffect);
 
             // Openers and hand disruption (the Yata plan wants their hand empty)
@@ -214,6 +220,15 @@ namespace WindBot.Game.AI.Decks
             else
                 Pick(darkInGY && lightInGY ? new[] { CardId.BLSBeginning, CardId.Wyverburster } : new[] { CardId.Wyverburster, CardId.BLSBeginning });
             return true;
+        }
+
+        bool DragondarkEffect()
+        {
+            // banished / sent to the GY: add another Thunder Dragon
+            if (Card.Location != CardLocation.Hand) { Pick(CardId.Dragonhawk, CardId.Dragonroar); return true; }
+            // hand (Quick): discard for another Dragondark, which also puts a DARK in the GY for Chaos costs
+            if (!MaybeInDeck(CardId.Dragondark, 3)) return false;
+            return !MyTurn;
         }
 
         bool BanishCost(CardAttribute attr)

@@ -120,7 +120,7 @@ namespace WindBot.Game.AI.Decks
             AddExecutor(ExecutorType.Summon, CardId.CelticMystic, () => Bot.Hand.Any(c => c.IsCode(LaDRMonsters))
                 || !Bot.HasInHand(CardId.MagiciansRod) && Bot.Hand.Any(c => c.IsCode(CardId.LaDR, CardId.SkullArchfiend, CardId.MindShuffle)));
             AddExecutor(ExecutorType.Activate, CardId.CelticMystic, CelticMysticEffect);
-            AddExecutor(ExecutorType.Activate, CardId.BLS, () => TargetEnemyCard());
+            AddExecutor(ExecutorType.Activate, CardId.BLS, () => TargetEnemyCard() && MarkRitualEffect());
             AddExecutor(ExecutorType.Activate, CardId.BlackChaos, BlackChaosEffect);
             AddExecutor(ExecutorType.Activate, CardId.GatewayToChaos, () => { Pick(CardId.BLS, CardId.LegendarySwordsman, CardId.LaDR, CardId.ChaosForm); return true; });
 
@@ -265,9 +265,12 @@ namespace WindBot.Game.AI.Decks
             bool targeted = Duel.ChainTargets.Contains(ours);
             bool backrowHit = ours.IsCode(CardId.BLS) && other.IsCode(CardId.BlackChaos)
                 && Duel.ChainTargets.Any(c => c.Controller == 0 && c.Location == CardLocation.SpellZone);
-            bool banishNew = ours.IsCode(CardId.BlackChaos) && other.IsCode(CardId.BLS)
-                && Enemy.GetMonsters().Any(m => m.IsFaceup() && (m.Attack >= ours.Attack || m.IsMonsterDangerous()));
-            if (!targeted && !backrowHit && !banishNew) return false;
+            // as the official Chaos Ritual bot plays it: every swap is a fresh Special Summon, so swap whenever they have
+            // something to hit (a monster, or face-down / Continuous backrow) and the incoming monster's summon effect
+            // (BLS banish / Black Chaos banish face-down + Spell back) is still unused this turn
+            bool somethingToHit = Enemy.GetMonsterCount() > 0 || Enemy.GetSpells().Any(c => c.IsFacedown() || c.HasType(CardType.Continuous));
+            bool fresh = !ritualEffectUsed.Contains(other.Id);
+            if (!targeted && !backrowHit && !(somethingToHit && fresh)) return false;
             Pick(ours);
             Pick(other);
             return true;
@@ -283,8 +286,10 @@ namespace WindBot.Game.AI.Decks
                 Pick(haveChaos ? new[] { CardId.BLS, CardId.BlackChaos } : new[] { CardId.BlackChaos, CardId.BLS });
                 return true;
             }
-            // shuffle 3 GY cards back to Special Summon itself: a body for the Ritual
-            return MyTurn && Duel.Phase == DuelPhase.Main1 && Bot.Hand.Any(c => c.IsCode(LaDRMonsters)) && Bot.Hand.Any(c => c.IsCode(CardId.LaDR));
+            // shuffle 3 GY cards back to Special Summon itself: from the GY only, with plenty of GY cards (the official
+            // Chaos Ritual bot never uses the hand version)
+            if (Card.Location == CardLocation.Hand) return false;
+            return MyTurn && Duel.Phase == DuelPhase.Main1 && Bot.Graveyard.Count >= 5 && Bot.Hand.Any(c => c.IsCode(LaDRMonsters));
         }
 
         bool LaDREffect()
@@ -332,9 +337,24 @@ namespace WindBot.Game.AI.Decks
                 .ThenBy(c => Rank(ExpendablePriority, c));
         }
 
+        readonly HashSet<int> ritualEffectUsed = new HashSet<int>();
+
+        public override void OnNewTurn()
+        {
+            ritualEffectUsed.Clear();
+            base.OnNewTurn();
+        }
+
+        bool MarkRitualEffect()
+        {
+            ritualEffectUsed.Add(Card.Id);
+            return true;
+        }
+
         bool BlackChaosEffect()
         {
             if (Card.Location != CardLocation.MonsterZone) return true;
+            MarkRitualEffect();
             if (GenericTrigger || Desc(CardId.BlackChaos, 0)) { Pick(CardId.LaDR, CardId.DarkMagicAttack, CardId.MonsterReborn, CardId.JokersStraight); return true; }
             return TargetEnemyCard();
         }

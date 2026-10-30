@@ -494,9 +494,12 @@ namespace WindBot.Game.AI.Decks
             var discard = Bot.Hand.Where(c => c != Card).OrderBy(c => c.IsCode(CardId.WhiteStoneOfLegend, CardId.WhiteStoneOfAncients) ? 0 : 1)
                 .ThenBy(c => Rank(ExpendablePriority, c)).ThenBy(CardValue).FirstOrDefault();
             if (discard == null) return false;
+            // prompts come in this order (official Blue-Eyes 2025 bot): discard, Spell/Trap, Tuner
             Pick(discard);
-            Pick(TrueLightUp ? new[] { CardId.MaidenWithEyesOfBlue, CardId.Sage } : new[] { CardId.MaidenOfWhite, CardId.MaidenWithEyesOfBlue, CardId.Sage });
-            Pick(CardId.TrueLight, CardId.Roar, CardId.ChaosForm, CardId.BurstStream);
+            if (!TrueLightUp && MaybeInDeck(CardId.TrueLight, 1)) Pick(CardId.TrueLight, CardId.Roar, CardId.MajestyOfTheWhiteDragons);
+            else Pick(Bot.HasInExtra(CardId.UltimateDragon) || Bot.HasInExtra(CardId.NeoUltimateDragon)
+                ? new[] { CardId.UltimateFusion, CardId.Roar, CardId.MajestyOfTheWhiteDragons } : new[] { CardId.Roar, CardId.MajestyOfTheWhiteDragons, CardId.UltimateFusion });
+            Pick(!Bot.HasInHand(CardId.Sage) ? new[] { CardId.Sage, CardId.MaidenOfWhite, CardId.MaidenWithEyesOfBlue } : new[] { CardId.MaidenOfWhite, CardId.MaidenWithEyesOfBlue });
             return true;
         }
 
@@ -543,8 +546,19 @@ namespace WindBot.Game.AI.Decks
             // negated True Light is destroyed and destroys our whole board
             if (EnemySpellTrapNegateReady) return false;
             if (Card.Location == CardLocation.Hand) return true;
-            if (Bot.HasInHand(CardId.BlueEyes) || Bot.HasInGraveyard(CardId.BlueEyes)) { Pick(CardId.BlueEyes); return true; }
-            Pick(CardId.BurstStream, CardId.MajestyOfTheWhiteDragons, CardId.Roar, CardId.UltimateCreature);
+            bool beAvailable = Bot.HasInHand(CardId.BlueEyes) || Bot.HasInGraveyard(CardId.BlueEyes);
+            if (Desc(CardId.TrueLight, 2))
+            {
+                // Set: Wishes for Eyes of Blue first on our turn (official Blue-Eyes 2025 bot), then Roar / Majesty
+                if (!MyTurn) return false;
+                if (beAvailable) return false; // Special Summon instead
+                if (!Bot.HasInHand(CardId.Wishes) && MaybeInDeck(CardId.Wishes, 1)) { Pick(CardId.Wishes); return true; }
+                Pick(CardId.Roar, CardId.MajestyOfTheWhiteDragons, CardId.UltimateFusion, CardId.BurstStream);
+                return true;
+            }
+            // Special Summon Blue-Eyes White Dragon
+            if (!beAvailable) return false;
+            Pick(CardId.BlueEyes);
             return true;
         }
 
