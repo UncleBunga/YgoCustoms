@@ -376,6 +376,11 @@ namespace WindBot.Game.AI.Decks
         bool NavigationEffect()
         {
             if (Card.Location == CardLocation.Grave) return Duel.LastChainPlayer == 1 || Enemy.GetSpells().Any(s => s.IsFaceup());
+            // as the official Dark Magician bot plays it: Set, then on their turn (in response, before battle, or when
+            // targeted) so Dark Magical Circle banishes off the summons; on our turn only to feed The Eye of Timaeus
+            bool ourTurnPayoff = Bot.HasInHand(CardId.EyeOfTimaeus) || Bot.HasInHand(CardId.TimaeusUnitedDragon);
+            if (MyTurn && !ourTurnPayoff) return false;
+            if (!MyTurn && Duel.LastChainPlayer != 1 && Duel.Phase != DuelPhase.BattleStart && !Util.IsChainTarget(Card)) return false;
             Pick(CardId.DarkMagician);
             Pick(CardId.MagicianOfDarkIllusion, CardId.DarkMagicianGirl, CardId.PharaohsServant, CardId.DarkMagician);
             return true;
@@ -387,9 +392,11 @@ namespace WindBot.Game.AI.Decks
             if (EnemySpellTrapNegateReady) return false;
             if (Card.Location == CardLocation.Hand) return true;
             // their turn: bring Dark Magician (Dark Magical Circle banishes on its summon) in response, or before they attack
+            // Dark Magician the Dragon Knight back first (it protects Eternal Soul in turn)
+            bool knightBack = Bot.HasInGraveyard(CardId.DragonKnight) && !Bot.HasInMonstersZone(CardId.DragonKnight);
             if (!MyTurn) return (Duel.LastChainPlayer == 1 || Duel.Phase == DuelPhase.BattleStart || Duel.Phase == DuelPhase.End)
-                && (Bot.HasInHand(CardId.DarkMagician) || Bot.HasInGraveyard(CardId.DarkMagician)) && PickThen(CardId.DarkMagician);
-            if (Bot.HasInHand(CardId.DarkMagician) || Bot.HasInGraveyard(CardId.DarkMagician)) { Pick(CardId.DarkMagician); return true; }
+                && (knightBack || Bot.HasInHand(CardId.DarkMagician) || Bot.HasInGraveyard(CardId.DarkMagician)) && PickThen(CardId.DragonKnight, CardId.DarkMagician);
+            if (knightBack || Bot.HasInHand(CardId.DarkMagician) || Bot.HasInGraveyard(CardId.DarkMagician)) { Pick(CardId.DragonKnight, CardId.DarkMagician); return true; }
             return !Bot.HasInHand(CardId.DarkMagicAttack);
         }
 
@@ -476,6 +483,7 @@ namespace WindBot.Game.AI.Decks
 
         bool YugiSet()
         {
+            if (Card.IsCode(CardId.MagicianNavigation)) return Bot.GetSpellCountWithoutField() < 5;
             // Mind Shuffle and the protection traps go down first; never more than the zones we still need
             if (Card.IsCode(CardId.MindShuffle, CardId.EternalSoul, CardId.ChaosMagicalHats, CardId.ChaosMysticBox)) return Bot.GetSpellCountWithoutField() < 5;
             return SetTrapOrQuickPlay();
