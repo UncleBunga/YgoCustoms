@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Linq;
 using YGOSharp.OCGWrapper.Enums;
 
 namespace WindBot.Game.AI.Decks
@@ -337,7 +336,7 @@ namespace WindBot.Game.AI.Decks
                 .ThenBy(c => Rank(ExpendablePriority, c));
         }
 
-        readonly HashSet<int> ritualEffectUsed = new HashSet<int>();
+        readonly List<int> ritualEffectUsed = new List<int>();
 
         public override void OnNewTurn()
         {

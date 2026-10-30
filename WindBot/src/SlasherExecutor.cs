@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Linq;
 using YGOSharp.OCGWrapper.Enums;
 
 namespace WindBot.Game.AI.Decks
@@ -569,7 +568,7 @@ namespace WindBot.Game.AI.Decks
                 // small subset search (field has at most 7 monsters)
                 for (int mask = 1; mask < (1 << others.Count); mask++)
                 {
-                    var pick = Enumerable.Range(0, others.Count).Where(i => (mask & (1 << i)) != 0).Select(i => others[i]).ToList();
+                    var pick = MiniLinq.Range(0, others.Count).Where(i => (mask & (1 << i)) != 0).Select(i => others[i]).ToList();
                     if (pick.Any(m => m.IsTuner()) && pick.All(m => m.IsTuner())) continue;
                     if (tuner.Level + pick.Sum(m => m.Level) == level)
                         return new List<ClientCard> { tuner }.Concat(pick).ToList();
