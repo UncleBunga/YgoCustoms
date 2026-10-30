@@ -21,7 +21,8 @@ If the repo is cloned inside EDOPro (`<EDOPro>/repositories/<name>`), `-EdoPath`
 
 EDOPro only lists bots that are in `WindBot/bots.json` (decks sitting in the folder are not enough). This folder is a
 complete drop-in: `bots.json` lists every official bot plus the custom ones, and `Decks/` and `Dialogs/` hold all of
-their files.
+their files. The official part is copied from Project Ignis's current WindBot (github.com/ProjectIgnis/windbot), which is
+what the Android app runs; if an EDOPro update adds new official bots, refresh it from there.
 
 Inside the EDOPro folder on the device (the one containing `deck`, `repositories` and `WindBot`), copy these from this
 repo's `WindBot` folder into `EDOPro/WindBot/`, overwriting:

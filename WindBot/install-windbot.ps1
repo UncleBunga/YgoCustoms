@@ -23,7 +23,8 @@ try {
 } catch {
     throw "Could not replace the bot DLL - close EDOPro (and any running AI duels) and run this again."
 }
-Copy-Item (Join-Path $here "Decks\*.ydk") (Join-Path $wb "Decks") -Force
+# only our decks: Decks\ also carries the official AI decks for Android drop-in, which must match the local WindBot
+Copy-Item (Join-Path $here "Decks\AI_IRL_*.ydk"), (Join-Path $here "Decks\AI_Slasher.ydk") (Join-Path $wb "Decks") -Force
 
 # Add our entries to bots.json (keeping the official ones), replacing older copies of the same deck
 $botsFile = Join-Path $wb "bots.json"
